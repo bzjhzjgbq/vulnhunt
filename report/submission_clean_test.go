@@ -13,6 +13,7 @@ func TestCleanForSubmissionRemovesInternalHandles(t *testing.T) {
 		"详见意图 #15843 / work#2，资产 asset 19013。",
 		"`get_finding_traffic(335)` 返回空绑定。",
 		"同组件读链（#334 / 节点 #15197）为另一条路径，见 #15197。",
+		"本链把 reading/#15401 删链的前置降为无条件。",
 	}, "\n")
 	out := CleanForSubmission(in)
 

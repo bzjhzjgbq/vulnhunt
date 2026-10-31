@@ -2321,6 +2321,11 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Consolidated export re-loads report bodies while building the case reports, so
+	// re-apply the submission cleanup after consolidation as well.
+	if q.Get("clean") == "1" {
+		report.SanitizeFindings(fs)
+	}
 	now := time.Now()
 	stamp := now.Format("20060102-150405")
 	setDownload := func(contentType, filename string) {

@@ -32,9 +32,9 @@ var submissionRules = []submissionRule{
 	{regexp.MustCompile(`事实\s*#\d+`), "既有事实"},
 	{regexp.MustCompile(`意图\s*#\d+`), "相关意图"},
 	{regexp.MustCompile(`work#\d+`), "worker"},
-	// A bare handle that survived the rules above ("见 #15197"): drop it together
-	// with the leading space/paren so no dangling punctuation is left behind.
-	{regexp.MustCompile(`(^|[\s（(])#\d{3,}\b`), "$1"},
+	// A bare handle that survived the rules above ("见 #15197", "读链/#15401"):
+	// drop it wherever it sits so no dangling id is left behind.
+	{regexp.MustCompile(`#\d{3,}\b`), ""},
 }
 
 // CleanForSubmission rewrites internal tracker handles in one text blob.

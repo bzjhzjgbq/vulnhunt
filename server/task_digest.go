@@ -76,7 +76,6 @@ func (s *Server) taskDigest(w http.ResponseWriter, r *http.Request) {
 	dto := taskDigestDTO{
 		TaskID:       t.ID,
 		Name:         t.Name,
-		Status:       t.lifecycleSnapshot().Status,
 		IntentCounts: map[string]int{},
 		GeneratedAt:  time.Now().Format(time.RFC3339),
 	}
@@ -84,6 +83,17 @@ func (s *Server) taskDigest(w http.ResponseWriter, r *http.Request) {
 		dto.Paused = s.engine.IsPaused(t.ID)
 		dto.InFlight = s.engine.inflightCount(t.ID)
 		dto.LastActivity = s.engine.LastActivity(t.ID)
+	}
+	// lifecycleSnapshot can still say "created" while the engine is working (the
+	// persisted column is only written on lifecycle transitions); derive the view
+	// the operator expects.
+	switch {
+	case dto.Paused:
+		dto.Status = "paused"
+	case dto.InFlight > 0:
+		dto.Status = "running"
+	default:
+		dto.Status = t.lifecycleSnapshot().Status
 	}
 
 	// Goals: open first, then met, capped so a task with a long history stays small.
