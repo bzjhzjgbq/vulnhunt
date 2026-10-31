@@ -128,6 +128,11 @@ type Engine struct {
 	workMu sync.Mutex
 	work   map[int64]*workExecution
 
+	// Intent watchdog state (see engine_reaper.go): the last activity timestamp for
+	// each running intent, and the orphan tracker that decides reopen-vs-stop.
+	intentAct sync.Map // intentID -> int64 unix
+	orphans   *orphanTracker
+
 	// steerBox queues planner course-corrections for a running work (keyed by intent
 	// id). The worker's PreToolUse hook drains it before its next tool call and hands
 	// the message to the model (blocking that call) so it re-plans — no kill needed.
@@ -406,7 +411,7 @@ func NewEngine(m *Manager) *Engine {
 	return &Engine{m: m, debounce: 800 * time.Millisecond, bc: NewBroadcaster(),
 		execCancel: map[string]context.CancelCauseFunc{}, execCtx: map[string]context.Context{},
 		work: map[int64]*workExecution{}, steerBox: map[int64][]string{},
-		runtimes: map[string]*taskRuntime{}}
+		runtimes: map[string]*taskRuntime{}, orphans: newOrphanTracker(orphanGrace)}
 }
 
 // registerWork records the cancel for the work currently running intentID.
@@ -685,6 +690,9 @@ func (e *Engine) emitActivity(t *Task, r db.Activity) db.Activity {
 		r.CreatedAt = time.Now()
 	}
 	e.bc.Publish(t.ID, r)
+	if r.NodeID != nil {
+		e.trackIntentActivity(*r.NodeID, time.Now())
+	}
 	e.touch(t.ID)
 	return r
 }
@@ -808,7 +816,7 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 		t.Notify() // already running — just nudge a planning round
 		return
 	}
-	rt := e.registerTaskRoutines(ctx, t.ID, 1+len(slots))
+	rt := e.registerTaskRoutines(ctx, t.ID, 2+len(slots))
 	plan := make(map[string]int64, len(slots))
 	for _, slot := range slots {
 		plan[slot.Name] = slot.ProfileID
@@ -817,6 +825,7 @@ func (e *Engine) Run(ctx context.Context, t *Task) {
 	e.deleteMu.RUnlock()
 	e.touch(t.ID)
 	runTaskRoutine(rt, func(loopCtx context.Context) { e.plannerLoop(loopCtx, t) })
+	runTaskRoutine(rt, func(loopCtx context.Context) { e.intentReaperLoop(loopCtx, t) })
 	for _, slot := range slots {
 		slot := slot
 		runTaskRoutine(rt, func(loopCtx context.Context) { e.workerLoop(loopCtx, t, slot) })
@@ -1089,6 +1098,7 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 	// per-work child context so the planner's kill_work can stop just this work.
 	workCtx, workCancel := context.WithCancelCause(ectx)
 	e.registerWork(intent.ID, workCancel)
+	e.trackIntentActivity(intent.ID, time.Now())
 	// wrap the guard hooks so steer_work can inject a mid-run course-correction
 	// for THIS intent (drained before the worker's next tool call).
 	iid := intent.ID

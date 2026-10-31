@@ -28,6 +28,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
+import { TaskDigestCard } from "./task-digest-card";
 import type {
   AssetInterceptKind,
   AssetInterceptRule,
@@ -432,6 +433,7 @@ export function OverviewTab({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <TaskDigestCard taskId={taskId} />
       {/* 原始任务描述与目标(创建时填写的),置顶便于随时回看。 */}
       <Card>
         <CardHeader>

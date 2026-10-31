@@ -1070,6 +1070,9 @@ func (t *ToolSet) addOneIntent(it intentItem) (int64, error) {
 		}
 	}
 	payload := map[string]any{"summary": it.Summary}
+	if err := t.checkDuplicateIntent(it.Summary); err != nil {
+		return 0, err
+	}
 	if len(anchors) > 0 {
 		payload["asset_ids"] = anchors
 	}

@@ -348,6 +348,57 @@ WHERE exploration_id=$1 AND kind='intent' AND state='blocked'`, s.expID)
 	return n, nil
 }
 
+// ListRunningIntents returns every intent currently marked running, oldest first.
+// The engine's orphan reaper uses it to find rows whose worker goroutine no longer
+// exists in this process (a panicked or silently stuck run) — they would otherwise
+// stay running forever and keep the task "active" for the goalless completion check.
+func (s *ExplorationStore) ListRunningIntents() ([]*Node, error) {
+	rows, err := s.db.Query(`SELECT `+nodeCols+` FROM exploration_nodes
+WHERE exploration_id=$1 AND kind='intent' AND state='running' ORDER BY id`, s.expID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanNodes(rows)
+}
+
+// ListActiveIntents returns open and running intents, newest first. It backs the
+// duplicate-direction guard: a planner should not enqueue a second intent that is
+// textually near-identical to one already waiting or executing.
+func (s *ExplorationStore) ListActiveIntents(limit int) ([]*Node, error) {
+	if limit <= 0 {
+		limit = 300
+	}
+	rows, err := s.db.Query(`SELECT `+nodeCols+` FROM exploration_nodes
+WHERE exploration_id=$1 AND kind='intent' AND state IN ('open','running')
+ORDER BY id DESC LIMIT $2`, s.expID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanNodes(rows)
+}
+
+// IntentStateCounts returns intent counts grouped by state for the task digest.
+func (s *ExplorationStore) IntentStateCounts() (map[string]int, error) {
+	rows, err := s.db.Query(`SELECT state, count(*) FROM exploration_nodes
+WHERE exploration_id=$1 AND kind='intent' GROUP BY state`, s.expID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var state string
+		var n int
+		if err := rows.Scan(&state, &n); err != nil {
+			return nil, err
+		}
+		out[state] = n
+	}
+	return out, rows.Err()
+}
+
 func (s *ExplorationStore) SetIntentState(id int64, state string) error {
 	// terminal states stamp completed_at; reopening (back to open/running) clears it.
 	terminal := state == "done" || state == "blocked" || state == "exhausted" || state == "stopped"

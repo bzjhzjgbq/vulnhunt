@@ -50,6 +50,8 @@ var (
 		"用户删除了正在运行的 Worker。本次调用被取消；Worker 退出写入区后，服务端按用户选择的删除模式处理该意图——假删除仅标记为已删除并保留全部产出，真删除会级联移除该意图及仅由它支撑的下游节点")
 	AbortWorkFinished = cause("work_finished", "Worker 已正常结束并释放 context",
 		"Worker 已正常结束，引擎在 detachWork 中释放其 context 资源。这不是运行中断；若它出现在中断消息中，说明取消与收场事件发生了竞态")
+	AbortWorkStalled = cause("work_stalled", "Worker 长时间没有产生任何活动，被引擎回收",
+		"意图在 running 状态超过 20 分钟没有产生任何活动（工具调用/结果/用量），引擎判定该运行已无法自行结束并取消了它；意图会标记为 stopped，已经写入的事实与资产保留，可在会话列表手动重跑")
 	AbortPausedRaceGuard = cause("paused_race_guard", "任务暂停期间拒绝启动新运行",
 		"任务处于暂停状态时，引擎拒绝发出新的执行 context，用于防止 claim 与暂停之间的竞态导致 Worker 继续启动；已领取的意图会退回 frontier")
 
