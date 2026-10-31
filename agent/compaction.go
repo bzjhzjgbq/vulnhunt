@@ -509,24 +509,89 @@ func buildCompressionInput(g *coldGraph, b block, nodeByID map[int64]*db.Node) s
 	return sb.String()
 }
 
+// compressMaxTokens caps one §4 body reply. Generous on purpose: a block's
+// combined member summaries can legitimately run long, and some gateways count
+// the thinking channel against this budget even when thinking is disabled, so a
+// tight cap can starve the actual body.
+const compressMaxTokens = 4000
+
+// compressAttemptTimeout bounds ONE compress attempt. The background compaction
+// shares a single maxDur (5 min) budget across every block it folds, so a member
+// that accepts the request and then stalls would spend that whole budget and
+// starve the rest.
+//
+// Must stay comfortably ABOVE provider.streamIdleTimeout (60s): the idle watchdog
+// is what turns a stall into a failover-eligible transport error, whereas hitting
+// this deadline first surfaces as DeadlineExceeded — which shouldFailover
+// deliberately ignores ("the caller gave up"), so the pool would neither fail over
+// nor trip the stalled member. 100s leaves the watchdog 60s to fire first.
+const compressAttemptTimeout = 100 * time.Second
+
+// compressNudge is appended on an empty reply. The failure this repairs is a
+// reasoning-only turn: the model puts the whole reply in the thinking channel,
+// so Message.Text() (which concatenates text blocks only) comes back empty while
+// the message itself is non-empty — and the SDK therefore does NOT retry it
+// (openai.go only re-requests a completion with no content blocks at all).
+// Asking for the body directly is what breaks that shape.
+const compressNudge = "上一轮你只输出了思考过程、没有输出 body 正文。现在直接输出 body 正文本身：不要复述思考、不要解释你要怎么做、不要任何前后缀。"
+
 // compress runs the §4 body LLM call on one block. Uses the same model the agent
 // runs on; thinking disabled (a pure summarization step).
 func (c *Compactor) compress(ctx context.Context, g *coldGraph, b block, nodeByID map[int64]*db.Node) (string, error) {
-	req := llm.CompletionRequest{
-		System:    []string{compressionSystemPrompt},
-		Messages:  []llm.Message{llm.UserText(buildCompressionInput(g, b, nodeByID))},
-		MaxTokens: 1500,
-		Thinking:  "disabled",
+	input := buildCompressionInput(g, b, nodeByID)
+	const maxAttempts = 3
+	var lastStop string
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		msgs := []llm.Message{llm.UserText(input)}
+		if attempt > 1 {
+			// A reasoning-only turn is a generation-shape problem, not a capacity
+			// one — re-asking with the same prompt tends to reproduce it.
+			msgs = append(msgs, llm.UserText(compressNudge))
+		}
+		req := llm.CompletionRequest{
+			System:    []string{compressionSystemPrompt},
+			Messages:  msgs,
+			MaxTokens: compressMaxTokens,
+			Thinking:  "disabled",
+		}
+		// Per-attempt deadline. One background compaction shares a single 5-minute
+		// budget (maxDur), so a member that accepts the request and then never
+		// answers would consume the whole budget and starve every other block.
+		// Cutting each attempt short turns a hang into a retry (and, because the
+		// chain re-orders per call, usually onto a different member).
+		actx, acancel := context.WithTimeout(ctx, compressAttemptTimeout)
+		msg, stop, _, err := c.prov.Complete(actx, req)
+		acancel()
+		if err != nil {
+			if ctx.Err() != nil {
+				return "", err // outer budget/deadline — no point retrying
+			}
+			if attempt < maxAttempts {
+				log.Printf("[compaction] 压缩调用失败 block=%v 第 %d/%d 次: %v → 重试", b.Members, attempt, maxAttempts, err)
+				select {
+				case <-ctx.Done():
+					return "", ctx.Err()
+				case <-time.After(time.Duration(attempt) * time.Second):
+				}
+				continue
+			}
+			return "", err
+		}
+		lastStop = stop
+		if body := strings.TrimSpace(msg.Text()); body != "" {
+			return body, nil
+		}
+		log.Printf("[compaction] 空 body（仅思考无正文）block=%v 第 %d/%d 次 stop=%q 思考块=%d → 带动输出正文重试",
+			b.Members, attempt, maxAttempts, stop, len(msg.Content))
+		if attempt < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+		}
 	}
-	msg, _, _, err := c.prov.Complete(ctx, req)
-	if err != nil {
-		return "", err
-	}
-	body := strings.TrimSpace(msg.Text())
-	if body == "" {
-		return "", fmt.Errorf("empty body from model")
-	}
-	return body, nil
+	return "", fmt.Errorf("empty body from model (仅思考无正文, stop=%q, %d 次尝试)", lastStop, maxAttempts)
 }
 
 // compressionSystemPrompt is the §4 body prompt.

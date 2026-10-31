@@ -25,6 +25,10 @@ func TestIsQuotaExhaustedMessage(t *testing.T) {
 		`billing_not_active`,
 		`credit balance is too low`,
 		`账户余额不足，请充值`,
+		// The gateway in front of the pool words exhaustion this way; the marker
+		// list used to carry only "quota exceeded" / "exceeded your current quota"
+		// and missed it, so a drained channel never rotated.
+		`data: {"error":{"code":"upstream_parse","message":"solo error code=4008 msg=Your requests have exceeded the quota.","type":"api_error"}}`,
 	}
 	for _, message := range positive {
 		if !IsQuotaExhaustedMessage(message) {
@@ -40,6 +44,10 @@ func TestIsQuotaExhaustedMessage(t *testing.T) {
 		`RESOURCE_EXHAUSTED: TPM quota exceeded`,
 		`tokens per minute quota exceeded`,
 		`rate_limit_exceeded: requests per second`,
+		// SenseNova words a per-second limit as "rps exhausted" while keeping the
+		// quota_exceeded_error type; the unit group used to carry only rpm/tpm/rpd/
+		// qps, so this transient limit was misread as a drained channel and rotated.
+		`{"error":{"message":"rps exhausted","type":"quota_exceeded_error","code":"8"}}`,
 		`status 401: invalid api key`,
 		`status 401: insufficient_quota`,
 		`HTTP 403: billing_hard_limit_reached`,

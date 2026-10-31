@@ -42,6 +42,29 @@ const RankActive = int(^uint(0)>>1) - 1
 // ErrExhausted is returned when every member of the chain failed.
 var ErrExhausted = errors.New("LLM 轮询：所有配置均不可用")
 
+// errEmptyCompletion marks a member whose stream closed without producing any
+// model output.
+//
+// Some gateways answer a throttled/broken upstream with HTTP 200 plus an SSE
+// error frame (`data: {"error":{"message":"... exceeded the quota"}}`). norma
+// parses such a frame into zero events, so its own empty-response retry loop
+// (norma/llm/openai.go: Stream) exhausts and then closes the stream with just
+// the terminal events — a success by shape and nothing at all in fact. Before
+// this, the pool recorded that as a healthy member (Registry.Pass), so the
+// caller silently received an empty turn: the planner logged 规划完成 with zero
+// new intents and every task stalled, while the breaker never tripped because
+// nothing looked like an error. Treating it as a failure routes around the
+// member and lets the breaker do its job.
+var errEmptyCompletion = errors.New("LLM 轮询：空完成（流未产出任何内容）")
+
+// isTerminalEvent reports whether ev carries no model output of its own — it
+// only closes the message (stop reason / usage / stop marker). Every other event
+// type is model output (text, thinking, tool call), so its arrival proves the
+// member actually produced something.
+func isTerminalEvent(t llm.StreamEventType) bool {
+	return t == llm.SEMessageDelta || t == llm.SEMessageStop
+}
+
 // Pool is an llm.Provider that fails over across an ordered chain of members.
 // It is safe for concurrent use: members are immutable after construction and
 // all mutable state lives in the shared Registry.
@@ -79,28 +102,51 @@ func (p *Pool) Head() *Member { return p.members[0] }
 // harness's resume logic. Fortunately the failures this exists for (402 no
 // credit, 401 bad key, 429, 5xx) all surface during request establishment,
 // before the body is read, so they always land in the safe window.
+//
+// Terminal events (message_delta / message_stop) are held back until the member
+// is known to have produced output. A stream carrying nothing but those is an
+// empty completion (see errEmptyCompletion), and forwarding its stop marker would
+// end the caller's turn as though the model had answered.
 func (p *Pool) Stream(ctx context.Context, req llm.CompletionRequest) iter.Seq2[llm.StreamEvent, error] {
 	order := p.order(req)
 	return func(yield func(llm.StreamEvent, error) bool) {
 		var lastErr error
 		for i, m := range order {
-			emitted := false
+			emitted := false  // anything reached the caller
+			produced := false // model output (text / thinking / tool) reached the caller
+			var pending []llm.StreamEvent
 			var failed error
 			for ev, err := range m.Prov.Stream(ctx, req) {
-				if err != nil && !emitted && shouldFailover(ctx, err) {
-					failed = err
-					break // safe window: nothing reached the caller yet
-				}
-				emitted = true
-				if !yield(ev, err) {
-					return // caller stopped consuming (cancel / early exit)
-				}
 				if err != nil {
+					if !emitted && shouldFailover(ctx, err) {
+						failed = err
+						break // safe window: nothing reached the caller yet
+					}
+					if !yield(ev, err) {
+						return // caller stopped consuming (cancel / early exit)
+					}
 					return // terminal error already handed to the caller
 				}
+				if isTerminalEvent(ev.Type) {
+					pending = append(pending, ev) // hold back until output is proven
+					continue
+				}
+				produced = true
+				emitted = true
+				if !yield(ev, nil) {
+					return // caller stopped consuming (cancel / early exit)
+				}
+			}
+			if failed == nil && !produced {
+				failed = errEmptyCompletion
 			}
 			if failed == nil {
-				p.health.Pass(m.ID) // completed (or failed in a non-failover way)
+				for _, ev := range pending {
+					if !yield(ev, nil) {
+						return
+					}
+				}
+				p.health.Pass(m.ID) // completed and produced output
 				return
 			}
 			lastErr = failed
@@ -222,12 +268,36 @@ func statusOf(err error) int {
 	return code
 }
 
+// lengthLimitRe matches the "this request is too long for me" family of 400s.
+//
+// These are NOT identical everywhere: context windows differ per channel, so a
+// prompt that overflows one member's window is routinely accepted by the next.
+// Without this such a request died on the chain head — Pool.order only skips a
+// member when it KNOWS the window (WindowTokens > 0), and these profiles carry
+// context_window_k = 0 (= unlimited, see order), so the pool had no way to route
+// around an over-long prompt. Matching the message recovers that routing without
+// hard-coding per-channel window sizes we cannot verify.
+//
+// Kept deliberately narrow so a genuinely malformed request (bad JSON, bad role,
+// unknown parameter) still fails fast on the first member instead of burning the
+// whole chain.
+var lengthLimitRe = regexp.MustCompile(`(?i)(` +
+	`context[ _-]?length|context[ _-]?window|maximum context|` +
+	`max[ _-]?(output[ _-]?)?tokens|maximum number of tokens|too many tokens|token limit|length limit|` +
+	`prompt is too long|input is too long|request is too long|reduce the length|` +
+	`exceeds? the (maximum )?(context|token|length)|` +
+	`上下文|长度超|超出.{0,8}(长度|上限|限制)|过长` +
+	`)`)
+
 // shouldFailover reports whether err justifies trying the next profile.
 //
 // Never fails over on context cancellation — that's the user stopping a task or a
 // task-level timeout, and burning a backup key on it would both waste credit and
-// pollute the run's termination diagnosis. Never on 400 either: a malformed or
-// over-long request fails identically everywhere.
+// pollute the run's termination diagnosis.
+//
+// A plain 400 does not fail over: a malformed request fails identically
+// everywhere. The one exception is a length-related 400 — per-channel context
+// windows differ, so the next member may well accept the prompt (lengthLimitRe).
 func shouldFailover(ctx context.Context, err error) bool {
 	if err == nil {
 		return false
@@ -239,7 +309,7 @@ func shouldFailover(ctx context.Context, err error) bool {
 	case code == 0:
 		return true // no status → transport-level failure (reset / DNS / timeout)
 	case code == 400:
-		return false // bad or over-long request: identical everywhere
+		return lengthLimitRe.MatchString(err.Error()) // over-long prompt: next member may fit it
 	case code == 401, code == 402, code == 403, code == 404, code == 408, code == 429:
 		return true
 	case code >= 500:
