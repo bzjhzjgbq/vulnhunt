@@ -62,6 +62,7 @@ type SRCProgram struct {
 	UpdatedAt             time.Time  `json:"updated_at"`
 	LinkedTaskID          *int64     `json:"linked_task_id,omitempty"`
 	LinkedTaskStatus      string     `json:"linked_task_status,omitempty"`
+	LinkedTaskFindings    int        `json:"linked_task_findings"`
 }
 
 // SRCProgramFilter narrows the catalog list.
@@ -127,7 +128,7 @@ RETURNING (xmax = 0)`, p.SourceID, p.Name, p.TargetURL, p.Host, p.IconURL, regio
 const srcProgramCols = `p.id, p.source_id, p.name, p.target_url, p.host, p.icon_url,
  p.region, p.status, p.status_label, p.heat, p.tags, p.tag_ids,
  p.analysis_has_data, p.analysis_latest_month, p.analysis_latest_fetched_at,
- p.updated_at, t.id, COALESCE(t.status, '')`
+ p.updated_at, t.id, COALESCE(t.status, ''), COALESCE(t.finding_count, 0)`
 
 func scanSRCPrograms(rows *sql.Rows) ([]SRCProgram, error) {
 	var out []SRCProgram
@@ -139,7 +140,7 @@ func scanSRCPrograms(rows *sql.Rows) ([]SRCProgram, error) {
 		if err := rows.Scan(&p.ID, &p.SourceID, &p.Name, &p.TargetURL, &p.Host, &p.IconURL,
 			&p.Region, &p.Status, &p.StatusLabel, &p.Heat, &tags, &tagIDs,
 			&p.AnalysisHasData, &p.AnalysisLatestMonth, &fetched,
-			&p.UpdatedAt, &taskID, &p.LinkedTaskStatus); err != nil {
+			&p.UpdatedAt, &taskID, &p.LinkedTaskStatus, &p.LinkedTaskFindings); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(tags, &p.Tags)
@@ -179,7 +180,9 @@ func (d *DB) ListSRCPrograms(ctx context.Context, f SRCProgramFilter) ([]SRCProg
 	}
 	query := `SELECT ` + srcProgramCols + ` FROM src_programs p
 LEFT JOIN LATERAL (
-  SELECT id, status FROM tasks
+  SELECT id, status,
+    (SELECT count(*) FROM findings f WHERE f.task_id = tasks.id) AS finding_count
+  FROM tasks
   WHERE src_program_id = p.id AND deleted_at IS NULL
   ORDER BY id DESC LIMIT 1
 ) t ON true
@@ -197,7 +200,9 @@ ORDER BY p.heat DESC, p.id ASC`
 func (d *DB) GetSRCProgram(ctx context.Context, id int64) (*SRCProgram, error) {
 	rows, err := d.QueryContext(ctx, `SELECT `+srcProgramCols+` FROM src_programs p
 LEFT JOIN LATERAL (
-  SELECT id, status FROM tasks
+  SELECT id, status,
+    (SELECT count(*) FROM findings f WHERE f.task_id = tasks.id) AS finding_count
+  FROM tasks
   WHERE src_program_id = p.id AND deleted_at IS NULL
   ORDER BY id DESC LIMIT 1
 ) t ON true WHERE p.id = $1`, id)
