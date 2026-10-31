@@ -84,6 +84,7 @@ import type {
   Severity,
   SkillCall,
   SkillItem,
+  SRCProgram,
   SSProject,
   SSTask,
   Stats,
@@ -452,6 +453,29 @@ export const api = {
   taskCoverageGraph: (id: string) => get<CoverageGraphData>(`/tasks/${id}/coverage-graph`),
   // 全局 llm_usage 聚合（仪表盘新版 token 视图）：按 profile 总量 + 按天分桶。
   usageStats: (days = 365) => get<UsageStats>(`/tokens/usage?days=${days}`),
+  // ---- SRC 赏金目录（h0day 公共索引）----
+  srcPrograms: (params?: { q?: string; tag?: string; status?: string; region?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.q) p.set("q", params.q);
+    if (params?.tag) p.set("tag", params.tag);
+    if (params?.status) p.set("status", params.status);
+    if (params?.region) p.set("region", params.region);
+    const qs = p.toString();
+    return get<{ programs: SRCProgram[] | null; total: number }>(`/src/programs${qs ? `?${qs}` : ""}`).then(
+      (r) => ({ programs: arr(r.programs), total: r.total }),
+    );
+  },
+  srcSync: () =>
+    post<{ ok: boolean; source: string; result: { fetched: number; inserted: number; updated: number } }>(
+      "/src/sync",
+      {},
+    ),
+  srcLaunch: (id: number, body: { scope: string[]; authorized: boolean; name?: string }) =>
+    post<{ ok: boolean; task_id: string; program_id: number; scopes: string[] }>(
+      `/src/programs/${id}/launch`,
+      body,
+    ),
+
   // ---- 任务摘要（总览顶部）----
   // 一次拿到目标/意图状态计数/在跑意图/最近 blocked/最近发现，用于快速定位卡点。
   taskDigest: (id: string) => get<TaskDigest>(`/tasks/${id}/digest`),

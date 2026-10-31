@@ -742,6 +742,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/task-templates/{id}", s.pgDeleteTaskTemplate)
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
 	mux.HandleFunc("GET /api/tasks/{id}/digest", s.taskDigest)
+	// SRC bounty catalog (h0day public index): browse → launch a scoped task.
+	mux.HandleFunc("GET /api/src/programs", s.srcPrograms)
+	mux.HandleFunc("POST /api/src/sync", s.srcCatalogSync)
+	mux.HandleFunc("POST /api/src/programs/{id}/launch", s.srcProgramLaunch)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
 	mux.HandleFunc("PATCH /api/tasks/{id}/category", s.updateTaskCategory)
 	// 任务级资产拦截/允许规则

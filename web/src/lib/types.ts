@@ -1890,3 +1890,25 @@ export interface TaskDigest {
   queued: number;
   generated_at: string;
 }
+
+// SRC bounty catalog row (GET /api/src/programs), imported from the public
+// h0day SRC index and linked to the newest task created from it.
+export interface SRCProgram {
+  id: number;
+  source_id: number;
+  name: string;
+  target_url: string;
+  host: string;
+  icon_url: string;
+  region: string;
+  status: string;
+  status_label: string;
+  heat: number;
+  tags: string[];
+  tag_ids: number[];
+  analysis_has_data: boolean;
+  analysis_latest_month: string;
+  updated_at: string;
+  linked_task_id?: number;
+  linked_task_status?: string;
+}
