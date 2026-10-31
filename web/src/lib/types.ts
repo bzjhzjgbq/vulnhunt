@@ -1911,4 +1911,5 @@ export interface SRCProgram {
   updated_at: string;
   linked_task_id?: number;
   linked_task_status?: string;
+  linked_task_findings?: number;
 }

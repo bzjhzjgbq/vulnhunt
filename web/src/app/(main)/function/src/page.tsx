@@ -108,13 +108,17 @@ export default function SRCProgramsPage() {
     }
   }
 
+  const launchedCount = programs.filter((p) => p.linked_task_id).length;
+  const findingsTotal = programs.reduce((sum, p) => sum + (p.linked_task_findings ?? 0), 0);
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">SRC 平台库</h1>
           <p className="text-muted-foreground text-xs">
-            h0day SRC 赏金目录 · 共 {programs.length} 个平台 · 选中项目、填写授权范围后一键开测
+            h0day SRC 赏金目录 · 共 {programs.length} 个平台 · 已开测 {launchedCount} 个 · 已出洞{" "}
+            {findingsTotal} 个 · 选中项目、填写授权范围后一键开测
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void sync()} disabled={syncing}>
@@ -209,6 +213,7 @@ export default function SRCProgramsPage() {
                       >
                         任务 #{p.linked_task_id}
                         {p.linked_task_status ? ` · ${p.linked_task_status}` : ""}
+                        {p.linked_task_findings ? ` · ${p.linked_task_findings} 洞` : ""}
                       </Link>
                     ) : (
                       <span className="text-muted-foreground">未开测</span>
