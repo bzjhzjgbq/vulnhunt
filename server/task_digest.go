@@ -87,14 +87,18 @@ func (s *Server) taskDigest(w http.ResponseWriter, r *http.Request) {
 	// lifecycleSnapshot can still say "created" while the engine is working (the
 	// persisted column is only written on lifecycle transitions); derive the view
 	// the operator expects.
+	st := t.lifecycleSnapshot().Status
 	switch {
 	case dto.Paused:
-		dto.Status = "paused"
-	case dto.InFlight > 0:
-		dto.Status = "running"
-	default:
-		dto.Status = t.lifecycleSnapshot().Status
+		st = "paused"
+	case isTerminalStatus(st):
+		// done / failed / timeout — keep the persisted terminal state.
+	case t.Queued:
+		st = "queued"
+	case s.engine != nil && s.engine.Started(t.ID):
+		st = "running"
 	}
+	dto.Status = st
 
 	// Goals: open first, then met, capped so a task with a long history stays small.
 	if goals, err := t.Store.ListByKind(db.KindGoal, 100); err == nil {
