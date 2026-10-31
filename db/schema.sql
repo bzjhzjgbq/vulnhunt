@@ -1627,3 +1627,29 @@ CREATE INDEX IF NOT EXISTS idx_task_intelligence_assets ON task_intelligence USI
 
 -- Optional derived credential presentation; raw intelligence remains authoritative.
 ALTER TABLE task_intelligence ADD COLUMN IF NOT EXISTS credential_analysis JSONB;
+
+-- §SRC catalog: bounty programs imported from the public h0day SRC index.
+-- The catalog is reference data (idempotent upsert by source_id); a task links
+-- back via tasks.src_program_id so the UI can show "已开测" and findings roll up.
+CREATE TABLE IF NOT EXISTS src_programs (
+    id             BIGSERIAL PRIMARY KEY,
+    source_id      INTEGER NOT NULL UNIQUE,
+    name           TEXT NOT NULL,
+    target_url     TEXT NOT NULL DEFAULT '',
+    host           TEXT NOT NULL DEFAULT '',
+    icon_url       TEXT NOT NULL DEFAULT '',
+    region         TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT '',
+    status_label   TEXT NOT NULL DEFAULT '',
+    heat           INTEGER NOT NULL DEFAULT 0,
+    tags           JSONB NOT NULL DEFAULT '[]'::jsonb,
+    tag_ids        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    analysis_has_data BOOLEAN NOT NULL DEFAULT false,
+    analysis_latest_month TEXT NOT NULL DEFAULT '',
+    analysis_latest_fetched_at TIMESTAMPTZ,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    synced_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS src_program_id BIGINT;
+CREATE INDEX IF NOT EXISTS idx_tasks_src_program ON tasks(src_program_id) WHERE src_program_id IS NOT NULL;
