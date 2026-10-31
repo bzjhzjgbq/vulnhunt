@@ -19,6 +19,14 @@ rem （selfupdate 包）。脚本保持傻瓜化，详见 start.sh 顶部的说�
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
+rem ── 本机私人部署：免登录 + 只监听回环 ───────────────────────────────
+rem ARTEX_NO_LOGIN=1 让后端不再校验 JWT 与登录口令（见 server/auth.go 里 noLogin 的
+rem 注释）；配套把监听地址收回 127.0.0.1，局域网里的其他机器连不上，等于用"不可达"
+rem 代替"要密码"。要恢复默认（需要登录 + 监听所有网卡），删掉这两行即可；只想换回
+rem 监听所有网卡但保留免登录，把 -addr 改成 0.0.0.0:8787（或删掉 -addr 参数）。
+set "ARTEX_NO_LOGIN=1"
+set "BIND_ADDR=127.0.0.1:8787"
+
 set "BIN=artex.exe"
 if not exist "%BIN%" (
 	echo [artex] 找不到可执行文件 %BIN% 1>&2
@@ -30,7 +38,7 @@ set "MAX_DELAY=60"
 set /a delay=1
 
 :loop
-"%BIN%" %*
+"%BIN%" -addr "%BIND_ADDR%" %*
 set "code=!ERRORLEVEL!"
 
 if "!code!"=="0" (

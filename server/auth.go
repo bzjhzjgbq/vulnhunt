@@ -34,6 +34,17 @@ const (
 // 掉已有的管理员密码。
 const errDataSourceUnavailable = "数据源暂时不可用，请稍后重试"
 
+// noLogin 是本机私人部署的免登录开关，由 start.bat 里的 ARTEX_NO_LOGIN=1 打开。
+//
+// 为什么做成"启动期环境变量"而不是数据库设置项：它是这台机器上的人际决定
+// （私人电脑、不对外），而不是运行时业务配置；放在进程环境里就没有每次都查库的
+// 开销，也不会出现"改完库忘了刷缓存"的错位。不设该变量时，JWT 与口令校验的行为
+// 与上游完全一致——把这个开关摘掉就恢复原样。
+//
+// 打开后只做两件事：requireAuth 不再校验 JWT；authLogin 不再校验口令（仍然签发
+// 正常 JWT，前端 token 流转完全不变）。Basic Auth 是另一层，仍由系统设置控制。
+var noLogin = os.Getenv("ARTEX_NO_LOGIN") == "1"
+
 // validatePassword 返回空串表示通过，否则返回可直接展示给用户的中文原因。
 func validatePassword(pw string) string {
 	if utf8.RuneCountInString(pw) < minPasswordRunes {
@@ -119,6 +130,12 @@ func extractToken(r *http.Request) string {
 // /api/auth/*, /api/health and the Basic Auth gate check are exempt.
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if noLogin {
+			// 免登录部署：/api 一律放行。前端仍会走一次 authLogin 拿 token，
+			// 所以 SSE 的 ?token= 与 Authorization 头照旧工作，只是不再强制。
+			h.ServeHTTP(w, r)
+			return
+		}
 		p := r.URL.Path
 		if strings.HasPrefix(p, "/api/auth/") || p == "/api/health" || p == "/api/basic-auth/check" {
 			h.ServeHTTP(w, r)
@@ -270,6 +287,17 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decode(r, &req); err != nil {
 		writeErr(w, 400, "请求格式错误")
+		return
+	}
+	if noLogin {
+		// 免登录部署：不校验用户名与口令，仍然签发正常 JWT —— 前端拿 token 的
+		// 流程、SSE 的 ?token=、api.ts 的 Authorization 头都不用改。
+		tok, err := signJWT(s.jwtKey)
+		if err != nil {
+			writeErr(w, 500, "token 生成失败")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"token": tok})
 		return
 	}
 	if req.Username != "ARTEX" {
