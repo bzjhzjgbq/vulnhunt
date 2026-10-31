@@ -268,6 +268,8 @@ export default function FindingsPage() {
   const [exportScope, setExportScope] = React.useState<"filtered" | "all" | "selected">("filtered");
   const [exportFormat, setExportFormat] = React.useState<"md-single" | "md-zip" | "csv" | "json">("md-single");
   const [includeOriginals, setIncludeOriginals] = React.useState(false);
+  // 提交版导出：清理内部 finding/fact/intent 编号，便于直接粘贴到 SRC 平台。
+  const [exportClean, setExportClean] = React.useState(false);
   const [reviewing, setReviewing] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
 
@@ -314,6 +316,7 @@ export default function FindingsPage() {
         },
         ids: [...selectedIds],
         includeOriginals,
+        clean: exportClean,
       });
       setExportOpen(false);
       toast.success("已开始下载导出文件");
@@ -1313,6 +1316,16 @@ export default function FindingsPage() {
                 />
                 <label htmlFor="include-original-reports" className="text-sm">
                   包含原始子报告（默认每个文件夹一份统一报告）
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="export-clean-submission"
+                  checked={exportClean}
+                  onCheckedChange={(v) => setExportClean(v === true)}
+                />
+                <label htmlFor="export-clean-submission" className="text-sm">
+                  提交版：清理内部 finding/fact/intent 编号（Markdown 导出适用）
                 </label>
               </div>
               <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as typeof exportFormat)}>

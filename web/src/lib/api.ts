@@ -94,6 +94,7 @@ import type {
   TaskAssetScopeMutation,
   TaskCategory,
   TaskConstraint,
+  TaskDigest,
   TaskGoal,
   TaskIntelligence,
   TaskLLMResolutions,
@@ -451,6 +452,9 @@ export const api = {
   taskCoverageGraph: (id: string) => get<CoverageGraphData>(`/tasks/${id}/coverage-graph`),
   // 全局 llm_usage 聚合（仪表盘新版 token 视图）：按 profile 总量 + 按天分桶。
   usageStats: (days = 365) => get<UsageStats>(`/tokens/usage?days=${days}`),
+  // ---- 任务摘要（总览顶部）----
+  // 一次拿到目标/意图状态计数/在跑意图/最近 blocked/最近发现，用于快速定位卡点。
+  taskDigest: (id: string) => get<TaskDigest>(`/tasks/${id}/digest`),
   // ---- 目标管理（总览）----
   // 本任务全部目标（text/vulnclass/state）。
   taskGoals: (id: string) =>
@@ -676,10 +680,12 @@ export const api = {
     ids?: string[];
     includeOriginals?: boolean;
     consolidated?: boolean;
+    clean?: boolean;
   }) => {
     const p = new URLSearchParams({ format: opts.format, scope: opts.scope });
     p.set("mode", opts.consolidated === false ? "raw" : "consolidated");
     p.set("include_originals", String(opts.includeOriginals ?? false));
+    p.set("clean", opts.clean ? "1" : "0");
     if (opts.scope === "selected") {
       p.set("ids", (opts.ids ?? []).join(","));
     } else if (opts.scope === "filtered" && opts.filters) {

@@ -741,6 +741,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/task-templates/{id}", s.pgUpdateTaskTemplate)
 	mux.HandleFunc("DELETE /api/task-templates/{id}", s.pgDeleteTaskTemplate)
 	mux.HandleFunc("GET /api/tasks/{id}", s.getTask)
+	mux.HandleFunc("GET /api/tasks/{id}/digest", s.taskDigest)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
 	mux.HandleFunc("PATCH /api/tasks/{id}/category", s.updateTaskCategory)
 	// 任务级资产拦截/允许规则
@@ -1032,7 +1033,23 @@ func (s *Server) Handler() http.Handler {
 // --- handlers ---
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"ok": true, "service": "artex", "version": BuildVersion})
+	out := map[string]any{"ok": true, "service": "artex", "version": BuildVersion}
+	// Surface database reachability: during the 2026-10-31 19:02 DB restart this
+	// endpoint kept answering {"ok":true} while every write failed, which sent the
+	// operator looking in the wrong place. The HTTP status stays 200 on purpose
+	// (probes and the watchdog treat non-200 as "restart me"), but a degraded body
+	// makes the failure visible without opening the logs.
+	if s.m != nil && s.m.pg != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		defer cancel()
+		if err := s.m.pg.PingContext(ctx); err != nil {
+			out["database"] = "unreachable"
+			out["degraded"] = true
+		} else {
+			out["database"] = "ok"
+		}
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
@@ -2271,6 +2288,12 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
+	}
+	// clean=1 strips ARTEX's internal finding/fact/intent handles so the export can
+	// be pasted into a bounty platform as-is. Applied before staging so the md zip
+	// gets the same cleaned text as the single-file export.
+	if q.Get("clean") == "1" {
+		report.SanitizeFindings(fs)
 	}
 
 	var casePlan *findingCaseExportPlan

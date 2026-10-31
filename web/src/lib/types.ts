@@ -1860,3 +1860,33 @@ export interface IntelligencePage {
   counts: Record<IntelligenceKind, number>;
   enabled: boolean;
 }
+
+// Task digest (GET /api/tasks/{id}/digest) — compact "what is it doing / why stuck".
+export interface TaskDigestIntent {
+  id: string;
+  state: string;
+  priority: number;
+  summary: string;
+  ts?: string;
+  has_live_work: boolean;
+  silent_secs?: number;
+}
+
+export interface TaskDigest {
+  task_id: string;
+  name: string;
+  status: string;
+  paused: boolean;
+  in_flight: number;
+  engine_mode: EngineMode;
+  last_activity: number;
+  goals: { id: string; text: string; state: string }[];
+  goal_open: number;
+  goal_met: number;
+  intent_counts: Record<string, number>;
+  running: TaskDigestIntent[];
+  blocked_recent: TaskDigestIntent[];
+  findings_recent: { id: string; name: string; severity: string; status: string; ts?: string }[];
+  queued: number;
+  generated_at: string;
+}
