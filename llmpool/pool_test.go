@@ -368,3 +368,98 @@ func TestExpiredWindowIsClosed(t *testing.T) {
 		t.Fatal("expired window should read as closed")
 	}
 }
+
+// emptyProv mimics the shape norma produces when a gateway answers a throttled
+// upstream with HTTP 200 plus an SSE error frame: no content events at all, just
+// the terminal pair it emits once its empty-response retries are spent.
+func emptyProv(name string) *fakeProv {
+	return &fakeProv{name: name, events: [][]llm.StreamEvent{{
+		{Type: llm.SEMessageDelta, StopReason: ""},
+		{Type: llm.SEMessageStop},
+	}}}
+}
+
+// An empty completion is not a success. Before this, the pool called Pass and the
+// caller silently got an empty turn — the planner logged 规划完成 with zero new
+// intents for six hours while the breaker, seeing no error, never tripped.
+func TestFailoverOnEmptyCompletion(t *testing.T) {
+	empty, b := emptyProv("empty"), okProv("b", "real work")
+	reg := NewRegistry(nil, nil)
+	p := New([]*Member{member(1, "empty", 10, empty), member(2, "b", 5, b)}, reg)
+
+	got, err := drain(p.Stream(context.Background(), llm.CompletionRequest{}))
+	if err != nil {
+		t.Fatalf("expected failover to the healthy member, got %v", err)
+	}
+	if got != "real work" {
+		t.Fatalf("text = %q, want the fallback's output", got)
+	}
+	if empty.calls != 1 || b.calls != 1 {
+		t.Fatalf("calls: empty=%d b=%d, want 1/1", empty.calls, b.calls)
+	}
+	if st := reg.Get(1); st.Fails == 0 && st.Trips == 0 {
+		t.Fatal("empty completion was not counted against the member")
+	}
+}
+
+// The held-back terminal events must never reach the caller for an empty
+// completion: a message_stop would close the turn as if the model had answered.
+func TestEmptyCompletionTerminalEventsHeldBack(t *testing.T) {
+	p := New([]*Member{member(1, "empty", RankActive, emptyProv("empty"))}, NewRegistry(nil, nil))
+
+	var terminal int
+	for ev, err := range p.Stream(context.Background(), llm.CompletionRequest{}) {
+		if err != nil {
+			break // chain exhausted — the only outcome an empty chain can give
+		}
+		if isTerminalEvent(ev.Type) {
+			terminal++
+		}
+	}
+	if terminal != 0 {
+		t.Fatalf("forwarded %d terminal events from an empty completion, want 0", terminal)
+	}
+}
+
+// Thinking-only turns are a legitimate end_turn that the engine handles with its
+// empty-turn nudge. Thinking is model output, so it must not look like an empty
+// completion here — otherwise every nudge-worthy turn would burn a backup key.
+func TestThinkingOnlyTurnIsNotAnEmptyCompletion(t *testing.T) {
+	thinker := &fakeProv{name: "t", events: [][]llm.StreamEvent{{
+		{Type: llm.SEThinkingDelta, Text: "let me think"},
+		{Type: llm.SEMessageDelta, StopReason: "end_turn"},
+		{Type: llm.SEMessageStop},
+	}}}
+	b := okProv("b", "should not be used")
+	reg := NewRegistry(nil, nil)
+	p := New([]*Member{member(1, "t", 10, thinker), member(2, "b", 5, b)}, reg)
+
+	if _, err := drain(p.Stream(context.Background(), llm.CompletionRequest{})); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if b.calls != 0 {
+		t.Fatalf("thinking-only turn failed over to a backup (b.calls=%d)", b.calls)
+	}
+	if st := reg.Get(1); st.Fails != 0 || st.Trips != 0 {
+		t.Fatalf("thinking-only turn counted as a failure: %+v", st)
+	}
+}
+
+// A productive stream still delivers its terminal events, in order.
+func TestTerminalEventsForwardedAfterContent(t *testing.T) {
+	p := New([]*Member{member(1, "a", RankActive, okProv("a", "hi"))}, NewRegistry(nil, nil))
+
+	var kinds []llm.StreamEventType
+	for ev, err := range p.Stream(context.Background(), llm.CompletionRequest{}) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		kinds = append(kinds, ev.Type)
+	}
+	if len(kinds) < 2 || kinds[len(kinds)-1] != llm.SEMessageStop {
+		t.Fatalf("event kinds = %v, want the terminal message_stop last", kinds)
+	}
+	if kinds[0] != llm.SETextDelta {
+		t.Fatalf("event kinds = %v, want the text delta first", kinds)
+	}
+}

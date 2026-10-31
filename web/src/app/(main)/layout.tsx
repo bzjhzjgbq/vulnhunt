@@ -6,6 +6,7 @@ import * as React from "react";
 import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { auth } from "@/lib/auth";
+import { api } from "@/lib/api";
 import { getClientCookie } from "@/lib/cookie.client";
 import {
   SIDEBAR_COLLAPSIBLE_VALUES,
@@ -36,13 +37,26 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
   React.useEffect(() => {
     if (auth.getToken()) {
       setAuthed(true);
-    } else {
-      // 客户端守卫认为未登录时，必须同时清掉 cookie：否则 proxy.ts 仅凭
-      // “cookie 存在”就把我们从 /login 又重定向回主界面，与本守卫来回弹跳
-      // 形成无限重定向 → 白屏（cookie 与 localStorage 不一致时触发）。
-      auth.clearToken();
-      window.location.href = "/login";
+      return;
     }
+    // 本机免登录部署（start.bat 里的 ARTEX_NO_LOGIN=1）：后端不再校验口令，这里
+    // 静默换一个 token 再进主界面，省掉登录页那一跳。后端仍然要求登录时这个调用
+    // 会拿到 401，此时不拦在这里——交给 api.ts 的 401 处理回落到 /login。
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { token } = await api.login("ARTEX", "");
+        if (!cancelled) {
+          auth.setToken(token);
+          setAuthed(true);
+        }
+      } catch {
+        if (!cancelled) setAuthed(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const defaultOpen = typeof document === "undefined" ? true : getClientCookie("sidebar_state") !== "false";

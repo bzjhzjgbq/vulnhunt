@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -29,6 +30,7 @@ import (
 type Task struct {
 	ID           string `json:"id"`
 	ExpID        int64  `json:"exploration_id"`
+	Remark       string `json:"remark"`
 	Name         string `json:"name"` // 可选任务名称;空=未命名
 	CategoryID   *int64 `json:"category_id,omitempty"`
 	CategoryName string `json:"category_name,omitempty"`
@@ -58,6 +60,7 @@ type Task struct {
 	TimeoutSeconds       int                    `json:"timeout_seconds"`
 	PlanHeartbeatSeconds int                    `json:"plan_heartbeat_seconds"` // planner 心跳触发间隔(秒)
 	CoverageEnabled      bool                   `json:"coverage_enabled"`       // 资产覆盖度功能开关(创建时定,默认开)
+	WorkerCount          int                    `json:"worker_count"`           // 本任务 Worker 数;0=用全局默认
 	FirstRunAt           int64                  `json:"first_run_at,omitempty"`
 	DeadlineAt           int64                  `json:"deadline_at,omitempty"`
 	Store                *pgdb.ExplorationStore `json:"-"`
@@ -79,6 +82,7 @@ type Task struct {
 // directly after the task has been published by Manager.
 type taskLifecycleState struct {
 	Name          string
+	Remark        string
 	PinnedAt      int64
 	Status        string
 	Paused        bool
@@ -106,6 +110,7 @@ func (t *Task) lifecycleSnapshot() taskLifecycleState {
 func (t *Task) lifecycleSnapshotLocked() taskLifecycleState {
 	return taskLifecycleState{
 		Name:          t.Name,
+		Remark:        t.Remark,
 		PinnedAt:      t.PinnedAt,
 		Status:        t.Status,
 		Paused:        t.Paused,
@@ -130,6 +135,7 @@ func (t *Task) updateLifecycle(update func(*taskLifecycleState)) {
 	state := t.lifecycleSnapshotLocked()
 	update(&state)
 	t.Name = state.Name
+	t.Remark = state.Remark
 	t.PinnedAt = state.PinnedAt
 	t.Status = state.Status
 	t.Paused = state.Paused
@@ -261,6 +267,7 @@ const (
 	// only routes the search backend) and the per-profile LLM proxy.
 	settingGlobalProxy = "global_proxy"
 	settingWorkers     = "workers"
+	settingWorkerPools = "worker_pools"
 	settingLLMRecord   = "llm_record"
 	// LLM 轮询(故障转移)。默认关闭——开启后走「全局激活配置」的 agent 在当前配置
 	// 不可用(余额不足/key 失效/限流/服务异常)时自动切到下一个配置。
@@ -286,6 +293,102 @@ const (
 	// is enabled but no explicit limit was saved.
 	defaultConcurrencyLimit = 5
 )
+
+// WorkerPool binds a number of worker slots to one LLM profile. Profile IDs are
+// encoded as JSON strings to match the frontend LLMProfile API.
+type WorkerPool struct {
+	ProfileID int64 `json:"profile_id,string"`
+	Workers   int   `json:"workers"`
+}
+
+func (p *WorkerPool) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		ProfileID json.RawMessage `json:"profile_id"`
+		Workers   int             `json:"workers"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var id int64
+	if err := json.Unmarshal(raw.ProfileID, &id); err != nil {
+		var text string
+		if err := json.Unmarshal(raw.ProfileID, &text); err != nil {
+			return fmt.Errorf("profile_id 必须是整数或数字字符串")
+		}
+		parsed, err := strconv.ParseInt(strings.TrimSpace(text), 10, 64)
+		if err != nil {
+			return fmt.Errorf("profile_id 必须是整数或数字字符串")
+		}
+		id = parsed
+	}
+	p.ProfileID, p.Workers = id, raw.Workers
+	return nil
+}
+
+// WorkerSlot is the concrete routing plan for one task run.
+type WorkerSlot struct {
+	Name      string
+	ProfileID int64 // zero means legacy task-router resolution
+}
+
+// ValidateWorkerPools validates pool shape without requiring a database. Pool
+// entries with duplicate profile IDs are rejected so each profile has one
+// unambiguous slot group in the saved order.
+func ValidateWorkerPools(pools []WorkerPool) error {
+	if len(pools) == 0 {
+		return nil
+	}
+	seen := make(map[int64]bool, len(pools))
+	total := 0
+	for _, pool := range pools {
+		if pool.ProfileID <= 0 {
+			return fmt.Errorf("worker_pools 中 profile_id 必须大于 0")
+		}
+		if pool.Workers <= 0 {
+			return fmt.Errorf("worker_pools 中 workers 必须大于 0")
+		}
+		if seen[pool.ProfileID] {
+			return fmt.Errorf("worker_pools 中 profile_id %d 重复", pool.ProfileID)
+		}
+		seen[pool.ProfileID] = true
+		if total > 50-pool.Workers {
+			return fmt.Errorf("worker_pools 的 Worker 总数必须在 1 到 50 之间")
+		}
+		total += pool.Workers
+	}
+	if total < 1 || total > 50 {
+		return fmt.Errorf("worker_pools 的 Worker 总数必须在 1 到 50 之间")
+	}
+	return nil
+}
+
+// ExpandWorkerSlots expands pools in their saved order; invalid or empty legacy
+// settings use the historical worker count (default 3).
+func ExpandWorkerSlots(pools []WorkerPool, legacy int) ([]WorkerSlot, error) {
+	if err := ValidateWorkerPools(pools); err != nil {
+		return nil, err
+	}
+	if len(pools) == 0 {
+		if legacy <= 0 {
+			legacy = defaultWorkers
+		}
+		slots := make([]WorkerSlot, legacy)
+		for i := range slots {
+			slots[i] = WorkerSlot{Name: fmt.Sprintf("work#%d", i+1)}
+		}
+		return slots, nil
+	}
+	slots := make([]WorkerSlot, 0)
+	for _, pool := range pools {
+		for i := 0; i < pool.Workers; i++ {
+			slots = append(slots, WorkerSlot{ProfileID: pool.ProfileID})
+		}
+	}
+	for i := range slots {
+		slots[i].Name = fmt.Sprintf("work#%d", i+1)
+	}
+	return slots, nil
+}
 
 // ConcurrencyLimit returns whether the simultaneous-running-task cap is enabled and
 // its limit (default 5 when enabled but unset). limit is always >=1 when enabled.
@@ -326,6 +429,64 @@ func (m *Manager) Workers() int {
 		return defaultWorkers
 	}
 	return n
+}
+
+func (m *Manager) WorkerPools() []WorkerPool {
+	v, ok, err := m.pg.GetSetting(settingWorkerPools)
+	if err != nil || !ok || strings.TrimSpace(v) == "" {
+		return []WorkerPool{}
+	}
+	var pools []WorkerPool
+	if json.Unmarshal([]byte(v), &pools) != nil || ValidateWorkerPools(pools) != nil {
+		return []WorkerPool{}
+	}
+	if pools == nil {
+		return []WorkerPool{}
+	}
+	return pools
+}
+
+// SetWorkerPools validates profile references at save time and atomically
+// synchronizes the legacy workers setting with the pool total. An empty slice
+// restores legacy mode; an optional legacy count is used when clearing pools.
+func (m *Manager) SetWorkerPools(pools []WorkerPool, legacyWorkers ...int) error {
+	if pools == nil {
+		pools = []WorkerPool{}
+	}
+	if err := ValidateWorkerPools(pools); err != nil {
+		return err
+	}
+	if len(pools) > 0 {
+		for _, pool := range pools {
+			profile, err := m.pg.ProfileByID(pool.ProfileID)
+			if err != nil {
+				return err
+			}
+			if profile == nil {
+				return fmt.Errorf("worker_pools 中 profile_id %d 不存在", pool.ProfileID)
+			}
+		}
+	}
+	b, err := json.Marshal(pools)
+	if err != nil {
+		return err
+	}
+	workerCount := m.Workers()
+	if len(pools) > 0 {
+		workerCount = 0
+		for _, pool := range pools {
+			workerCount += pool.Workers
+		}
+	} else if len(legacyWorkers) > 0 {
+		if legacyWorkers[0] <= 0 {
+			return fmt.Errorf("workers 必须 >0")
+		}
+		workerCount = legacyWorkers[0]
+	}
+	return m.pg.SetSettingsAtomic(context.Background(), map[string]string{
+		settingWorkerPools: string(b),
+		settingWorkers:     strconv.Itoa(workerCount),
+	})
 }
 
 // SetWorkers persists the concurrent work-agent count. Values <=0 are rejected.
@@ -832,6 +993,7 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 	return &Task{
 		ID: strconv.FormatInt(pt.ID, 10), ExpID: pt.ExplorationID,
 		Name:       pt.Name,
+		Remark:     pt.Remark,
 		CategoryID: cloneInt64Ptr(pt.CategoryID), CategoryName: pt.CategoryName,
 		PinnedAt:    unixOrZero(pt.PinnedAt),
 		Description: pt.Description, Goal: pt.Goal, CreatedAt: pt.CreatedAt.Unix(), Paused: pt.Paused, Queued: pt.Queued,
@@ -844,8 +1006,8 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		SourceTaskIDs:  append([]int64(nil), pt.SourceTaskIDs...),
 		CompanyIDs:     append([]int64(nil), pt.CompanyIDs...),
 		TimeoutSeconds: pt.TimeoutSeconds, PlanHeartbeatSeconds: pt.PlanHeartbeatSeconds,
-		CoverageEnabled: pt.CoverageEnabled,
-		FirstRunAt:      unixOrZero(pt.FirstRunAt), DeadlineAt: unixOrZero(pt.DeadlineAt),
+		CoverageEnabled: pt.CoverageEnabled, WorkerCount: pt.WorkerCount,
+		FirstRunAt: unixOrZero(pt.FirstRunAt), DeadlineAt: unixOrZero(pt.DeadlineAt),
 		Store: store, Guard: guard.NewWithInterceptor(ic), notify: make(chan struct{}, 1),
 	}
 }
@@ -871,6 +1033,7 @@ func (m *Manager) UpdateTaskMetadata(taskID string, patch pgdb.TaskPatch) (*Task
 	}
 	task.updateLifecycle(func(state *taskLifecycleState) {
 		state.Name = updated.Name
+		state.Remark = updated.Remark
 		state.PinnedAt = unixOrZero(updated.PinnedAt)
 	})
 	return task, nil
@@ -1147,6 +1310,12 @@ func (m *Manager) SetTaskPaused(id string, paused bool) error {
 // admission keeps its FIFO timestamp; a task that was explicitly paused and is
 // now re-queued receives a fresh tail position.
 func (m *Manager) ApplyTaskAdmission(id, expectedStatus, status string, queued bool, mode string, preservePosition bool) error {
+	return m.applyTaskAdmission(id, expectedStatus, status, queued, mode, preservePosition, nil)
+}
+
+// Manual task control records its schedule override in the admission commit, so
+// failed resumes cannot bypass a calendar and FIFO promotion preserves it.
+func (m *Manager) applyTaskAdmission(id, expectedStatus, status string, queued bool, mode string, preservePosition bool, manualUntil *time.Time) error {
 	m.taskStateMu.Lock()
 	defer m.taskStateMu.Unlock()
 	n, err := strconv.ParseInt(id, 10, 64)
@@ -1169,7 +1338,8 @@ func (m *Manager) ApplyTaskAdmission(id, expectedStatus, status string, queued b
 	        WHEN $2 IN ('done','failed','timeout') THEN COALESCE(completed_at, now())
 	        ELSE NULL
 	    END,
-	    paused=false,
+	    paused=false, schedule_paused=false,
+	    schedule_manual_until=COALESCE($7::timestamptz, schedule_manual_until),
 	    queued=$3,
 	    queued_at=CASE
 	        WHEN NOT $3 THEN NULL
@@ -1190,7 +1360,7 @@ func (m *Manager) ApplyTaskAdmission(id, expectedStatus, status string, queued b
 	        ELSE deadline_at
 	    END
 	WHERE id=$1 AND deleted_at IS NULL AND status=$6
-	RETURNING queued_at, queue_mode, completed_at, first_run_at, deadline_at`, n, status, queued, mode, preservePosition, expectedStatus).
+	RETURNING queued_at, queue_mode, completed_at, first_run_at, deadline_at`, n, status, queued, mode, preservePosition, expectedStatus, manualUntil).
 		Scan(&queuedAt, &committedMode, &completedAt, &firstRunAt, &deadlineAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("task %s lifecycle changed before admission (expected status %q)", id, expectedStatus)
@@ -1232,7 +1402,9 @@ func (m *Manager) ApplyTaskAdmission(id, expectedStatus, status string, queued b
 // the user pause. queue_mode is intentionally retained so resuming a never-run
 // bootstrap task still performs goal decomposition, but the next enqueue receives
 // a new queued_at timestamp and therefore moves to the FIFO tail.
-func (m *Manager) ApplyTaskPause(id string) error {
+func (m *Manager) ApplyTaskPause(id string) error { return m.ApplyTaskPauseOrigin(id, false) }
+
+func (m *Manager) ApplyTaskPauseOrigin(id string, scheduled bool) error {
 	m.taskStateMu.Lock()
 	defer m.taskStateMu.Unlock()
 	n, err := strconv.ParseInt(id, 10, 64)
@@ -1241,10 +1413,10 @@ func (m *Manager) ApplyTaskPause(id string) error {
 	}
 	var mode string
 	err = m.pg.QueryRow(`UPDATE tasks
-		SET paused=true, queued=false, queued_at=NULL
+		SET paused=true, queued=false, queued_at=NULL, schedule_paused=$2, schedule_manual_until=NULL
 		WHERE id=$1 AND deleted_at IS NULL AND paused=false
 		  AND status NOT IN ('done','failed','timeout')
-		RETURNING COALESCE(queue_mode,'')`, n).Scan(&mode)
+		RETURNING COALESCE(queue_mode,'')`, n, scheduled).Scan(&mode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("task %s is unavailable for pause", id)
 	}

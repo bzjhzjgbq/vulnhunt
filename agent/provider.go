@@ -18,6 +18,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Autumn-27/artex/llmrec"
@@ -250,14 +251,30 @@ func (c Config) Provider() string {
 	return "anthropic"
 }
 
-// NewProvider builds an llm.Provider from the config. When a rate is set, the
-// limiter lives on the single provider instance — so planner + all workers +
-// main agent (which share this provider) are bounded by one shared rate limit.
+// NewProvider builds a provider with its own HTTP request limiter. Every HTTP
+// attempt, including SDK retries, counts toward both rolling rate windows.
 func (c Config) NewProvider() (llm.Provider, error) {
+	return c.NewProviderWithLimiter(&RequestLimiter{})
+}
+
+// NewProviderWithLimiter reuses quota history across provider rebuilds. Callers
+// sharing a profile must retain the same limiter outside their provider cache.
+func (c Config) NewProviderWithLimiter(limiter *RequestLimiter) (llm.Provider, error) {
 	client, err := quotaAwareHTTPClient(c.Proxy, c.SessionHeaderKey)
 	if err != nil {
 		return nil, err
 	}
+	return c.newProvider(client, limiter)
+}
+
+func (c Config) newProvider(client *http.Client, limiter *RequestLimiter) (llm.Provider, error) {
+	if limiter == nil {
+		limiter = &RequestLimiter{}
+	}
+	if err := limiter.configure(c.RatePerSecond, c.RatePerMinute); err != nil {
+		return nil, err
+	}
+	client.Transport = rateLimitedTransport{base: client.Transport, limiter: limiter}
 	lc := llm.Config{
 		Format:     c.Format,
 		BaseURL:    c.BaseURL,
@@ -277,9 +294,8 @@ func (c Config) NewProvider() (llm.Provider, error) {
 	lc.RetryInterval = c.Retry.ConnectInterval
 	lc.EmptyResponseRetries = c.Retry.EmptyAttempts
 	lc.EmptyResponseInterval = c.Retry.EmptyInterval
-	if c.RatePerSecond > 0 || c.RatePerMinute > 0 {
-		lc.RateLimit = &llm.RateLimit{PerSecond: c.RatePerSecond, PerMinute: c.RatePerMinute}
-	}
+	// Norma's limiter allows a full-window burst and excludes establishment
+	// retries. Enforce limits on HTTP attempts instead; do not also enable it.
 	return llm.NewProvider(lc)
 }
 
@@ -287,7 +303,7 @@ func (c Config) NewProvider() (llm.Provider, error) {
 // billing, credit, or quota-exhaustion signals. Generic 429/rate-limit text,
 // authentication failures, network errors, and server failures are excluded.
 var nonFailoverHTTPStatus = regexp.MustCompile(`(?:status(?:\s+code)?|http(?:\s+status)?)\s*[=:]?\s*(?:401|403|5\d\d)\b`)
-var transientQuotaLimit = regexp.MustCompile(`(?i)(?:\b(?:rpm|tpm|rpd|qps)\b|quota[_\s-]*metric|rate[_\s-]*limit|too many requests|(?:requests?|tokens?)\s+(?:per|/)\s*(?:second|minute)|(?:per|/)\s*(?:second|minute)\s+(?:requests?|tokens?)|generate[_\s-]*requests[_\s-]*per[_\s-]*(?:minute|second)|tokens?[_\s-]*per[_\s-]*(?:minute|second))`)
+var transientQuotaLimit = regexp.MustCompile(`(?i)(?:\b(?:rps|rpm|tpm|rpd|qps)\b|quota[_\s-]*metric|rate[_\s-]*limit|too many requests|(?:requests?|tokens?)\s+(?:per|/)\s*(?:second|minute)|(?:per|/)\s*(?:second|minute)\s+(?:requests?|tokens?)|generate[_\s-]*requests[_\s-]*per[_\s-]*(?:minute|second)|tokens?[_\s-]*per[_\s-]*(?:minute|second))`)
 
 func IsQuotaExhaustedMessage(message string) bool {
 	message = strings.ToLower(message)
@@ -304,7 +320,7 @@ func IsQuotaExhaustedMessage(message string) bool {
 	}
 	markers := []string{
 		"insufficient_quota", "quota_exceeded", "quota exceeded", "quota exhausted",
-		"exceeded your current quota", "billing_hard_limit_reached",
+		"exceeded your current quota", "exceeded the quota", "billing_hard_limit_reached",
 		"billing hard limit", "billing_not_active", "credit balance", "insufficient credit",
 		"insufficient balance", "balance is too low", "payment required", "status 402",
 		"余额不足", "额度不足", "额度已用尽", "欠费",
@@ -356,6 +372,9 @@ func (t quotaAwareTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if err != nil || resp == nil {
 		return resp, err
 	}
+	// Bound the gap between body reads. A stream that starts and then stalls would
+	// otherwise block the SSE scanner forever (and with it a whole agent run).
+	resp.Body = newIdleTimeoutBody(resp.Body, streamIdleTimeout)
 	// Tee rather than read: a 200 is an SSE stream that must keep streaming. The
 	// 429 branch below reads through this wrapper, so its body lands in the
 	// capture before being replaced.
@@ -397,8 +416,100 @@ func requestBodySnapshot(req *http.Request) string {
 	return string(b)
 }
 
+// responseHeaderTimeout bounds how long an upstream may hold an established
+// connection before sending response headers. The client below deliberately has
+// no overall Timeout (a long SSE turn must be allowed to stream for as long as
+// the run budget permits), so this covers the "accepted the request but never
+// answered at all" case.
+const responseHeaderTimeout = 60 * time.Second
+
+// streamIdleTimeout bounds the gap BETWEEN body reads on a stream that has already
+// started. This is the case responseHeaderTimeout cannot cover: an upstream that
+// sends headers (even a first frame) and then stalls forever. observed on the
+// wild-work gateway 2026-10-14 — qodercn answered a first SSE frame carrying
+// {"code":"112","pricingUrl":...} and then held the connection open indefinitely
+// (connections were still Established 673s later). Because norma's SSE scanner
+// blocks on Body.Read, that stall parked a whole worker; with three workers the
+// engine froze completely and produced no log lines for minutes.
+//
+// A read that exceeds this gap fails the stream, which surfaces as a transport
+// error (no HTTP status) → shouldFailover treats it as code 0 and the request
+// moves to the next profile instead of hanging the run.
+//
+// Keep this SHORTER than any caller's own attempt deadline: a context deadline
+// fires as DeadlineExceeded, which shouldFailover explicitly refuses to act on
+// ("the caller gave up"), so an outer ctx timeout would suppress the failover
+// this is here to trigger. See compressAttemptTimeout in compaction.go.
+const streamIdleTimeout = 60 * time.Second
+
+// idleTimeoutBody fails a Read that produces no data for idleTimeout. It wraps a
+// response body rather than the request context so the deadline resets on every
+// successful read: a legitimate long generation keeps streaming, while a stalled
+// one is cut loose.
+type idleTimeoutBody struct {
+	rc     io.ReadCloser
+	idle   time.Duration
+	timer  *time.Timer
+	cancel context.CancelFunc
+	mu     sync.Mutex
+	fired  bool
+}
+
+func newIdleTimeoutBody(rc io.ReadCloser, idle time.Duration) *idleTimeoutBody {
+	b := &idleTimeoutBody{rc: rc, idle: idle}
+	return b
+}
+
+// Read resets the idle deadline on every successful read. When the timer fires
+// first it closes the body, which unblocks the pending Read with an error.
+func (b *idleTimeoutBody) Read(p []byte) (int, error) {
+	b.mu.Lock()
+	if b.timer == nil {
+		b.timer = time.AfterFunc(b.idle, func() {
+			b.mu.Lock()
+			b.fired = true
+			b.mu.Unlock()
+			_ = b.rc.Close()
+		})
+	} else {
+		b.timer.Reset(b.idle)
+	}
+	b.mu.Unlock()
+
+	n, err := b.rc.Read(p)
+	if n > 0 {
+		b.mu.Lock()
+		if b.timer != nil {
+			b.timer.Reset(b.idle)
+		}
+		b.mu.Unlock()
+	}
+	if err != nil {
+		b.mu.Lock()
+		fired := b.fired
+		if b.timer != nil {
+			b.timer.Stop()
+		}
+		b.mu.Unlock()
+		if fired {
+			return n, fmt.Errorf("llm: stream stalled (no data for %s)", b.idle)
+		}
+	}
+	return n, err
+}
+
+func (b *idleTimeoutBody) Close() error {
+	b.mu.Lock()
+	if b.timer != nil {
+		b.timer.Stop()
+	}
+	b.mu.Unlock()
+	return b.rc.Close()
+}
+
 func quotaAwareHTTPClient(proxy, sessionHeaderKey string) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = responseHeaderTimeout
 	proxy = strings.TrimSpace(proxy)
 	if proxy == "" {
 		transport.Proxy = nil // 留空=直连,不回退 HTTP_PROXY/HTTPS_PROXY 环境变量
