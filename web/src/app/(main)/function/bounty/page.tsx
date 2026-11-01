@@ -302,7 +302,7 @@ export default function BountyPage() {
         </CardContent>
       </Card>
 
-      {summary && summary.by_program.length > 0 && (
+      {summary && (summary.by_program?.length ?? 0) > 0 && (
         <Card>
           <CardContent className="flex flex-col gap-2 p-4">
             <div className="text-sm font-medium">按平台汇总</div>

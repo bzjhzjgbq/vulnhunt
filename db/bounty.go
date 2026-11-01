@@ -248,7 +248,7 @@ ORDER BY b.id DESC LIMIT 500`, args...)
 
 // BountySpend returns the aggregate view for the dashboard.
 func (d *DB) BountySpend(ctx context.Context) (*BountySummary, error) {
-	out := &BountySummary{ByStatus: map[string]int{}}
+	out := &BountySummary{ByStatus: map[string]int{}, ByProgram: []BountyProgramStat{}}
 	rows, err := d.QueryContext(ctx, `SELECT status, count(*), COALESCE(sum(amount_cents),0)
 FROM bounty_submissions GROUP BY status`)
 	if err != nil {
