@@ -1,0 +1,230 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-01",
+  "platforms": [
+    {
+      "id": "butian",
+      "name": "补天",
+      "source": "https://www.butian.net/ (规则整理：NaClO-3/src-fleet)",
+      "confidence": "verified",
+      "min_severity": "medium",
+      "accepts": [
+        "SQL 注入、命令注入、SSTI、出网 SSRF",
+        "真实 RCE（有回显或 OOB 确认）",
+        "可执行 JS 的真实 XSS（非无人访问页面）",
+        "可读/改他人私有数据的真实越权",
+        "未授权访问敏感 PII 或管理接口",
+        "OAuth/SAML/JWT 缺陷导致账号接管"
+      ],
+      "rejects": [
+        "无敏感信息的 CORS 配置错误（必须能读到受害者登录后才可见的数据才算）",
+        "无意义的内存/日志/内网 IP 泄露",
+        "示例文件泄露、前端源码泄露（source map、JS 硬编码盐值/密钥片段）",
+        "地图 Key 等第三方 Key 泄露导致的资源不受限调用",
+        "虚假的前端绕过（功能实际不可用）",
+        "上传 PDF 造成的 XSS",
+        "Web 安全配置缺陷：缺少 X-Frame-Options/CSP/HSTS、Cookie 缺 Secure/HttpOnly/SameSite、客户端 MD5 弱哈希、SSL/TLS 旧版本或弱套件",
+        "无意义的未授权接口（返回空结果/公开数据/仅 200 无业务影响）",
+        "无意义的并发问题（点赞、收藏、转发等无利益场景）",
+        "只有文字描述、理论猜测、没有完整复现细节的报告"
+      ],
+      "notes": [
+        "存疑时一律跳过，不要强行上报",
+        "目标连不上（DNS 失败/超时/拒绝）直接跳过并注明 unreachable，不要反复重试",
+        "每条 finding 必须有 HTTP 请求/响应原文或等价可复现证据"
+      ]
+    },
+    {
+      "id": "vulbox",
+      "name": "漏洞盒子",
+      "source": "https://www.vulbox.com/news/detail-212",
+      "confidence": "verified",
+      "min_severity": "medium",
+      "accepts": [
+        "严重：直接获取核心系统权限、获取大量用户核心数据、造成严重影响的逻辑漏洞",
+        "高危：获取业务服务器权限（命令执行/上传 webshell/代码执行）、核心 DB 的 SQL 注入、任意账号密码更改、批量盗取用户身份信息、越权访问后台",
+        "中危：需交互才能获取用户身份的存储型 XSS、任意文件读写删下载、越权修改用户资料/执行用户操作、较严重的信息泄露（如 DB 连接密码）",
+        "低危（赏金很低，默认不作为目标）：非重要信息泄露、URL 跳转、较难利用的 XSS、普通 CSRF"
+      ],
+      "rejects": [
+        "不涉及安全问题的 Bug：产品功能缺陷、页面乱码、样式混乱、静态文件目录遍历、兼容性问题",
+        "无法利用的漏洞：无敏感操作的 CSRF、无意义的异常信息泄露、内网 IP/域名泄露",
+        "纯属用户猜测、不能直接反映漏洞存在的问题",
+        "同系统同类型高危短时间大量提交时，厂商声明已知不再收取的部分会被降级或拒收"
+      ],
+      "notes": [
+        "同一系统同类高危漏洞不要批量堆叠：先提交最有代表性的 1-3 条",
+        "低危类默认不挖，除非能升级成中危以上影响",
+        "报告需要可复现的请求与原样响应片段"
+      ]
+    },
+    {
+      "id": "generic-vendor",
+      "name": "厂商 SRC 通用口径",
+      "source": "行业通用规则（各厂商页面为准）",
+      "confidence": "generic",
+      "min_severity": "medium",
+      "accepts": [
+        "RCE / 命令注入 / 反序列化 / 文件上传 getshell",
+        "SQL 注入（可读敏感数据）",
+        "出网 SSRF（能访问内网或云元数据）",
+        "SSTI、XXE（可读文件/出网）",
+        "未授权访问敏感数据或管理后台",
+        "越权读取/修改他人业务数据（IDOR/BOLA）",
+        "账号接管（OAuth/SAML/JWT/密码重置/会话缺陷）",
+        "可执行 JS 的存储型 XSS（影响其他用户）",
+        "严重业务逻辑缺陷（可批量获利/绕过支付/风控）"
+      ],
+      "rejects": [
+        "版本号/指纹泄露、Server 头、目录列表",
+        "CORS 配置错误（不能读取私有数据时）",
+        "缺少 CSP/HSTS/X-Frame-Options、Cookie 标志缺失",
+        "SSL/TLS 版本、弱加密套件、证书问题",
+        "自 XSS、需要受害者粘贴代码的 XSS",
+        "无敏感操作或无法利用的 CSRF",
+        "点击劫持（无敏感操作）",
+        "开放重定向（不能窃取 token/凭据）",
+        "邮箱/账号枚举、短信/邮件轰炸、速率限制缺失",
+        "DoS/拒绝服务、钓鱼、社工、物理访问",
+        "需要用户交互但无法造成实际危害的问题",
+        "日志/内网 IP/内网域名泄露",
+        "源码泄露但没有可利用的硬编码凭据",
+        "第三方组件已知 CVE 且未证明目标可利用",
+        "仅 DNS Log 无敏感信息、前端 API Key 且不能造成严重危害"
+      ],
+      "notes": [
+        "只做中危及以上；低危/信息类默认不产出",
+        "无法证明实际影响的方向直接跳过，不写 finding",
+        "同一目标同类问题合并成一条报告，不要刷量"
+      ]
+    }
+  ],
+  "programs": [
+    {
+      "id": "oocl",
+      "name": "货讯通 OOCL（补天）",
+      "match": ["oocl", "货讯通", "cargosmart", "schedulingsmart", "equippool", "weikayun"],
+      "platform": "butian",
+      "scope": [
+        "*.oocl.com、*.cargosmart.com、*.schedulingsmart.com、*.equippool.com、*.oocllogistics.com、*.weikayun.com、iac.oocl.com"
+      ],
+      "notes": [
+        "范围外资产一律不测",
+        "大量主机从当前出口不可达，连不上就跳过并记录，不要反复重试"
+      ]
+    },
+    {
+      "id": "airbnb",
+      "name": "Airbnb AirSRC（漏洞盒子）",
+      "match": ["airbnb", "爱彼迎"],
+      "platform": "vulbox",
+      "scope": ["*.airbnb.cn 及其子域、zh.airbnb.com、爱彼迎移动版 APP（iOS/Android/鸿蒙）、微信小程序"],
+      "rejects": [
+        "内部已知漏洞、短信/邮件轰炸等速率限制类、DoS、钓鱼、社工",
+        "反射型文件下载、软件版本泄漏、需物理访问",
+        "需用户交互但不可能产生交互的问题",
+        "影响旧版浏览器插件、登录界面可公网访问",
+        "CSV 注入、电子邮件枚举/账号猜测",
+        "CSP 配置缺陷、电子邮件欺骗、内容过滤绕过",
+        "查看他人公开资料或照片、无效链接/冒充社交媒体",
+        "仅 DNS Log 无敏感信息、前端 API Key 泄露且不能造成严重危害"
+      ],
+      "notes": [
+        "只取最小必要证明（1-3 条记录的字段名与少量样例），禁止批量遍历/拖库",
+        "禁止高并发、批量增删改等影响业务的测试"
+      ]
+    },
+    {
+      "id": "bilibili",
+      "name": "哔哩哔哩 BILISRC（漏洞盒子）",
+      "match": ["bilibili", "哔哩哔哩", "biligame"],
+      "platform": "vulbox",
+      "scope": ["*.bilibili.com", "*.biligame.com", "*.bilibiligame.net", "哔哩哔哩官方发布的客户端产品"],
+      "rejects": ["必剪（bcut）业务暂不收取", "对业务安全无实际影响的报告不计分"],
+      "notes": [
+        "客户端漏洞必须证明真实可读/可写用户数据，纯静态推断的中危默认不上报",
+        "同一客户端同类组件问题合并成一条报告"
+      ]
+    },
+    {
+      "id": "oppo",
+      "name": "OPPO OSRC（漏洞盒子）",
+      "match": ["oppo", "opposhop", "coloros", "heytap", "realme", "myoppo", "myoas"],
+      "platform": "vulbox",
+      "scope": [
+        "OPPO 自有业务：*.oppo.com、*.oppo.cn、*.myoppo.com、*.opposhop.cn、*.coloros.com、*.nearme.com、*.oppomobile.com、*.oppofind.com、*.myoas.com、*.heytap.com、*.heytapmobi.com、*.realme.com、*.realme.net"
+      ],
+      "notes": [
+        "只测 OPPO 自有业务，第三方业务与测试环境不收",
+        "匿名面已大面积判负，优先从客户端/供应链方向找真实影响"
+      ]
+    },
+    {
+      "id": "tencent",
+      "name": "腾讯 TSRC",
+      "match": ["tencent", "腾讯"],
+      "platform": "generic-vendor",
+      "notes": ["TSRC 对低危与信息类问题基本不收，优先高危/RCE/账号接管"]
+    },
+    {
+      "id": "alibaba",
+      "name": "阿里 ASRC",
+      "match": ["alibaba", "阿里", "aliyun", "taobao", "tmall"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "bytedance",
+      "name": "字节跳动 SRC",
+      "match": ["bytedance", "字节", "douyin", "toutiao"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "baidu",
+      "name": "百度 BSRC",
+      "match": ["baidu", "百度"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "jd",
+      "name": "京东 JSRC",
+      "match": ["jd.com", "京东"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "meituan",
+      "name": "美团 SRC",
+      "match": ["meituan", "美团", "dianping"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "didi",
+      "name": "滴滴 SRC",
+      "match": ["didi", "滴滴"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "kuaishou",
+      "name": "快手 SRC",
+      "match": ["kuaishou", "快手"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "netease",
+      "name": "网易 SRC",
+      "match": ["netease", "网易", "163.com"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "xiaomi",
+      "name": "小米 SRC",
+      "match": ["xiaomi", "小米"],
+      "platform": "generic-vendor"
+    },
+    {
+      "id": "huawei",
+      "name": "华为 SRC",
+      "match": ["huawei", "华为"],
+      "platform": "generic-vendor"
+    }
+  ]
+}

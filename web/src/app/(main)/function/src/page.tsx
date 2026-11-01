@@ -21,8 +21,8 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import type { SRCProgram } from "@/lib/types";
-import { ExternalLinkIcon, RefreshCwIcon, RocketIcon, SearchIcon } from "lucide-react";
+import type { SRCProgram, SRCStandard } from "@/lib/types";
+import { ExternalLinkIcon, RefreshCwIcon, RocketIcon, SearchIcon, ScrollTextIcon } from "lucide-react";
 import { toast } from "sonner";
 
 // SRC 平台库：把 h0day 的 SRC 赏金目录接进任务流水线。
@@ -49,6 +49,23 @@ export default function SRCProgramsPage() {
   const [authorized, setAuthorized] = React.useState(false);
   const [launching, setLaunching] = React.useState(false);
   const [extracting, setExtracting] = React.useState(false);
+  const [stdProgram, setStdProgram] = React.useState<SRCProgram | null>(null);
+  const [stdDetail, setStdDetail] = React.useState<SRCStandard | null>(null);
+  const [stdLoading, setStdLoading] = React.useState(false);
+
+  async function openStandard(p: SRCProgram) {
+    setStdProgram(p);
+    setStdDetail(null);
+    setStdLoading(true);
+    try {
+      const resp = await api.srcProgramStandard(p.id);
+      setStdDetail(resp.standard);
+    } catch (e) {
+      toast.error(`加载收录标准失败：${(e as Error).message}`);
+    } finally {
+      setStdLoading(false);
+    }
+  }
 
   async function extractScope() {
     if (!target) return;
@@ -239,6 +256,10 @@ export default function SRCProgramsPage() {
                     )}
                   </div>
 
+                  <Button size="sm" variant="outline" onClick={() => void openStandard(p)}>
+                    <ScrollTextIcon className="size-4" />
+                    标准
+                  </Button>
                   <Button size="sm" onClick={() => openLaunch(p)}>
                     <RocketIcon className="size-4" />
                     开测
@@ -302,6 +323,19 @@ export default function SRCProgramsPage() {
                 我已加入该 SRC 项目，并确认上述范围在授权收录范围内；测试遵守该项目规则与漏洞盒子平台铁律。
               </span>
             </label>
+            <div className="text-muted-foreground rounded-md border border-dashed p-2 text-[11px]">
+              开测时会把该平台的「收录标准」（可收/不收类型、最低等级、特殊规则）自动写入任务目标与约束，产出前按标准自检。
+              {target ? (
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto px-1 text-[11px]"
+                  onClick={() => void openStandard(target)}
+                >
+                  查看标准
+                </Button>
+              ) : null}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTarget(null)} disabled={launching}>
@@ -313,6 +347,88 @@ export default function SRCProgramsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!stdProgram} onOpenChange={(open) => !open && setStdProgram(null)}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>收录标准 · {stdProgram?.name}</DialogTitle>
+            <DialogDescription>
+              {stdLoading
+                ? "加载中…"
+                : stdDetail
+                  ? `${stdDetail.name} · 最低等级 ${stdDetail.min_severity ?? "按平台"}`
+                  : "暂无标准"}
+              {stdDetail ? (
+                <Badge variant={stdDetail.confidence === "verified" ? "default" : "secondary"} className="ml-2 text-[10px]">
+                  {stdDetail.confidence === "verified" ? "已核实" : "通用口径"}
+                </Badge>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          {stdDetail ? (
+            <div className="flex flex-col gap-3 text-xs">
+              {stdDetail.source ? (
+                <div className="text-muted-foreground">
+                  来源：
+                  <a className="underline" href={stdDetail.source.match(/https?:\/\/\S+/)?.[0] ?? "#"} target="_blank" rel="noreferrer noopener">
+                    {stdDetail.source}
+                  </a>
+                </div>
+              ) : null}
+              {stdDetail.scope?.length ? (
+                <Section title="范围">
+                  {stdDetail.scope.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </Section>
+              ) : null}
+              {stdDetail.accepts?.length ? (
+                <Section title="可收（优先做）">
+                  {stdDetail.accepts.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </Section>
+              ) : null}
+              {stdDetail.rejects?.length ? (
+                <Section title="不收（不要产出）" tone="danger">
+                  {stdDetail.rejects.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </Section>
+              ) : null}
+              {stdDetail.notes?.length ? (
+                <Section title="特殊规则">
+                  {stdDetail.notes.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </Section>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStdProgram(null)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  tone,
+  children,
+}: {
+  title: string;
+  tone?: "danger";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex flex-col gap-1 ${tone === "danger" ? "text-red-600 dark:text-red-400" : ""}`}>
+      <span className="font-medium">{title}</span>
+      <ul className="ml-4 list-disc space-y-1">{children}</ul>
     </div>
   );
 }

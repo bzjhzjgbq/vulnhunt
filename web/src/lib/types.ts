@@ -1959,3 +1959,18 @@ export interface ScopeCandidate {
   value: string;
   kind: string;
 }
+
+// SRC 收录标准（平台口径 + 项目覆盖），开测时注入任务目标与约束。
+export interface SRCStandard {
+  id: string;
+  name: string;
+  platform?: string;
+  match?: string[];
+  source?: string;
+  confidence?: "verified" | "generic";
+  min_severity?: string;
+  accepts?: string[];
+  rejects?: string[];
+  scope?: string[];
+  notes?: string[];
+}
