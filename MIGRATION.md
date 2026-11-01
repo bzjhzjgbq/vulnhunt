@@ -1,32 +1,33 @@
 # Finalize the folder move
 
 VulnHunt runs from `D:\VulnHunt`, which is currently a junction to the physical
-folder `D:\ARTEX`. The physical folder can only be renamed when **no process**
-holds `D:\ARTEX` open.
+folder `D:\ARTEX`. Until the rename happens **every file inside D:\VulnHunt is
+physically stored in D:\ARTEX** — that is expected.
 
-## Why the first attempts failed
+The rename can only succeed when no process holds `D:\ARTEX` open, including:
 
-1. The old launcher started inside `D:\VulnHunt` (= `D:\ARTEX`) and kept that as
-   its working directory — it locked the very folder it wanted to rename.
-   The launcher now does `cd /d %SystemRoot%` and the script does
-   `Set-Location $env:TEMP` before touching anything.
-2. `start.bat` is a watchdog: killing `vulnhunt.exe` made it restart the server
-   immediately, and its own CWD kept the folder locked. The script now stops the
-   `cmd.exe` running `start.bat` (whole process tree) first.
-3. The DSH agent/terminal that started this session still has `D:\ARTEX` as its
-   working directory. **It must be closed** before the rename can succeed.
+- the DSH agent/terminal that started this session (its working directory);
+- `start.bat` (a watchdog that restarts the server and keeps its CWD there);
+- **the migration script itself**, if it is executed from inside `D:\ARTEX`.
 
-## How to run
+## Where to run it from
 
-Close the DSH app and every terminal/editor opened in `D:\ARTEX`, then
-double-click **`finalize-migration.cmd`**.
+The script must run from **outside** the folder:
 
-The window stays open, every step is printed and also written to
+- preferred: the desktop shortcut **`VulnHunt 迁移`**, which points at
+  `C:\VulnHuntFinalize\finalize-migration.cmd` (a copy kept outside the tree);
+- alternative: double-click `D:\VulnHunt\finalize-migration.cmd` — it copies the
+  PowerShell script to `%TEMP%`, starts it detached and exits, so it does not
+  hold a handle inside the folder either.
+
+Before running it, close the DSH app and any terminal/editor opened in
+`D:\ARTEX`. The window stays open and the log is at
 `%TEMP%\vulnhunt-finalize.log`.
 
 ## What it does
 
-1. disables "VulnHunt Boot Stack", stops the watchdog and `vulnhunt.exe`;
+1. disables "VulnHunt Boot Stack", stops the watchdog process tree and
+   `vulnhunt.exe`;
 2. removes the `D:\VulnHunt` junction (target kept);
 3. renames `D:\ARTEX` to `D:\VulnHunt`;
 4. creates `D:\ARTEX` as a junction to `D:\VulnHunt` for compatibility;
