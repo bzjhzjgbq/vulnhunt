@@ -1913,3 +1913,49 @@ export interface SRCProgram {
   linked_task_status?: string;
   linked_task_findings?: number;
 }
+
+// Bounty ledger (GET /api/bounty/submissions) — one platform submission per row.
+export interface BountySubmission {
+  id: number;
+  finding_id: number;
+  finding_name?: string;
+  finding_severity?: string;
+  task_id?: number;
+  program_id?: number;
+  program_name?: string;
+  platform: string;
+  external_id: string;
+  status: "submitted" | "accepted" | "rejected" | "duplicate" | "paid" | "withdrawn";
+  severity: string;
+  amount_cents: number;
+  currency: string;
+  submitted_at?: string;
+  decided_at?: string;
+  paid_at?: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BountyProgramStat {
+  program_id?: number;
+  program_name: string;
+  total: number;
+  paid_cents: number;
+  accepted_cents: number;
+}
+
+export interface BountySummary {
+  total: number;
+  by_status: Record<string, number>;
+  pending_amount_cents: number;
+  accepted_amount_cents: number;
+  paid_amount_cents: number;
+  by_program: BountyProgramStat[];
+}
+
+// Candidate scope entry extracted from a program's public page.
+export interface ScopeCandidate {
+  value: string;
+  kind: string;
+}

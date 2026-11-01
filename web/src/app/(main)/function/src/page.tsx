@@ -48,6 +48,25 @@ export default function SRCProgramsPage() {
   const [scopeText, setScopeText] = React.useState("");
   const [authorized, setAuthorized] = React.useState(false);
   const [launching, setLaunching] = React.useState(false);
+  const [extracting, setExtracting] = React.useState(false);
+
+  async function extractScope() {
+    if (!target) return;
+    setExtracting(true);
+    try {
+      const resp = await api.srcScopeCandidates(target.id);
+      if (!resp.candidates.length) {
+        toast.error("项目页没有提取到候选域名/IP，请手动填写");
+        return;
+      }
+      setScopeText(resp.candidates.map((c) => c.value).join("\n"));
+      toast.success(`从项目页提取到 ${resp.candidates.length} 条候选，请核对后再开测`);
+    } catch (e) {
+      toast.error(`提取失败：${(e as Error).message}`);
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -251,7 +270,18 @@ export default function SRCProgramsPage() {
               )}
             </div>
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium">测试范围（每行一个域名 / IP / CIDR）</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium">测试范围（每行一个域名 / IP / CIDR）</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => void extractScope()}
+                  disabled={extracting}
+                >
+                  {extracting ? "提取中…" : "从项目页提取候选"}
+                </Button>
+              </div>
               <Textarea
                 rows={5}
                 placeholder={"example.com\n*.example.com\n1.2.3.4\n10.0.0.0/24"}
@@ -259,7 +289,7 @@ export default function SRCProgramsPage() {
                 onChange={(e) => setScopeText(e.target.value)}
               />
               <span className="text-muted-foreground text-[11px]">
-                支持通配域名（自动去掉 *.)、URL（自动取 host）、IP 与 CIDR；重复项会自动去重。
+                支持通配域名（自动去掉 *.)、URL（自动取 host）、IP 与 CIDR；重复项会自动去重。提取结果只是线索，务必对照项目页收录范围人工核对。
               </span>
             </div>
             <label className="flex items-start gap-2 text-sm">

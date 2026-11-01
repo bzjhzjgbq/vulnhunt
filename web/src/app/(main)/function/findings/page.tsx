@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
@@ -270,6 +271,8 @@ export default function FindingsPage() {
   const [includeOriginals, setIncludeOriginals] = React.useState(false);
   // 提交版导出：清理内部 finding/fact/intent 编号，便于直接粘贴到 SRC 平台。
   const [exportClean, setExportClean] = React.useState(false);
+  // 提交模板：补天 / 漏洞盒子 的字段布局（仅 Markdown 单文件生效）。
+  const [exportTemplate, setExportTemplate] = React.useState<"" | "butian" | "vulbox">("");
   const [reviewing, setReviewing] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
 
@@ -317,6 +320,7 @@ export default function FindingsPage() {
         ids: [...selectedIds],
         includeOriginals,
         clean: exportClean,
+        template: exportFormat === "md-single" ? exportTemplate : "",
       });
       setExportOpen(false);
       toast.success("已开始下载导出文件");
@@ -1327,6 +1331,20 @@ export default function FindingsPage() {
                 <label htmlFor="export-clean-submission" className="text-sm">
                   提交版：清理内部 finding/fact/intent 编号（Markdown 导出适用）
                 </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">提交模板</span>
+                <NativeSelect
+                  className="h-8 w-44"
+                  value={exportTemplate}
+                  onChange={(e) => setExportTemplate(e.target.value as "" | "butian" | "vulbox")}
+                  disabled={exportFormat !== "md-single"}
+                >
+                  <NativeSelectOption value="">通用 Markdown</NativeSelectOption>
+                  <NativeSelectOption value="butian">补天</NativeSelectOption>
+                  <NativeSelectOption value="vulbox">漏洞盒子</NativeSelectOption>
+                </NativeSelect>
+                <span className="text-muted-foreground text-[11px]">仅 Markdown 单文件生效</span>
               </div>
               <RadioGroup value={exportFormat} onValueChange={(v) => setExportFormat(v as typeof exportFormat)}>
                 <label htmlFor="export-format-md-single" className="flex items-center gap-2 text-sm">

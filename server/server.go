@@ -746,6 +746,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/src/programs", s.srcPrograms)
 	mux.HandleFunc("POST /api/src/sync", s.srcCatalogSync)
 	mux.HandleFunc("POST /api/src/programs/{id}/launch", s.srcProgramLaunch)
+	mux.HandleFunc("POST /api/src/programs/{id}/scope-candidates", s.srcProgramScopeCandidates)
+	// Bounty ledger: per-platform submissions and the aggregate view.
+	mux.HandleFunc("GET /api/bounty/submissions", s.bountySubmissions)
+	mux.HandleFunc("POST /api/bounty/submissions", s.bountyCreate)
+	mux.HandleFunc("PATCH /api/bounty/submissions/{id}", s.bountyUpdate)
+	mux.HandleFunc("DELETE /api/bounty/submissions/{id}", s.bountyDelete)
+	mux.HandleFunc("GET /api/bounty/summary", s.bountySummary)
 	mux.HandleFunc("PATCH /api/tasks/{id}", s.updateTaskMetadata)
 	mux.HandleFunc("PATCH /api/tasks/{id}/category", s.updateTaskCategory)
 	// 任务级资产拦截/允许规则
@@ -2340,6 +2347,10 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 	switch format {
 	case "md-single":
 		setDownload("text/markdown; charset=utf-8", "findings-"+stamp+".md")
+		if tmpl := strings.TrimSpace(q.Get("template")); tmpl != "" {
+			_, _ = w.Write([]byte(report.SubmissionPack(fs, tmpl, now)))
+			break
+		}
 		_, _ = w.Write([]byte(report.FindingsMarkdown(fs, now)))
 	case "md-zip":
 		path := filepath.Join(stage, "findings.zip")
