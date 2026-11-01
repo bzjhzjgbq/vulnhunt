@@ -107,7 +107,7 @@ export default function LoginPage() {
       <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">登录</h2>
+            <h2 className="text-2xl font-medium tracking-tight">登录猎洞</h2>
             <p className="mx-auto max-w-xl text-muted-foreground">欢迎回来，请输入密码以继续使用猎洞</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">

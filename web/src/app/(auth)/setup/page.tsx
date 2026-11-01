@@ -80,7 +80,9 @@ export default function SetupPage() {
       <div className="flex w-full items-center justify-center bg-background p-8 lg:w-2/3">
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
-            <h2 className="text-2xl font-medium tracking-tight">{unavailable ? "无法确认初始化状态" : "初始化密码"}</h2>
+            <h2 className="text-2xl font-medium tracking-tight">
+              {unavailable ? "无法确认初始化状态" : "初始化猎洞"}
+            </h2>
             <p className="mx-auto max-w-xl text-muted-foreground">
               {unavailable
                 ? "后端或数据库暂时不可用。为避免覆盖实例上已有的密码，初始化入口已临时关闭——请恢复服务后重试。"
