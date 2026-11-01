@@ -44,8 +44,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton asChild>
               <Link prefetch={false} href="/workbench">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/logo.png" alt="ARTEX" width={40} height={40} className="shrink-0" />
-                <span className="font-semibold text-base">{APP_CONFIG.name}</span>
+                <img src="/brand-mark.svg" alt={APP_CONFIG.name} width={36} height={36} className="shrink-0" />
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="text-base font-semibold">{APP_CONFIG.name}</span>
+                  <span className="text-muted-foreground text-[10px] font-medium tracking-[0.18em] uppercase">
+                    {APP_CONFIG.latinName}
+                  </span>
+                </span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

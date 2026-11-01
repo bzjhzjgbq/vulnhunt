@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="猎洞 VulnHunt">
+  <circle cx="32" cy="32" r="14" fill="none" stroke="#ffffff" stroke-width="4.5"/>
+  <circle cx="32" cy="32" r="4" fill="#ffffff"/>
+  <path d="M32 9v11M32 44v11M9 32h11M44 32h11" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+</svg>

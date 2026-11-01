@@ -95,7 +95,11 @@ export default function LoginPage() {
           <div className="absolute size-60 rounded-full border border-primary-foreground/15" />
           <div className="absolute size-40 rounded-full border border-primary-foreground/20" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="ARTEX" width={160} height={160} className="relative brightness-0 invert" />
+          <img src="/brand-mark-white.svg" alt="猎洞" width={140} height={140} className="relative" />
+        </div>
+        <div className="mt-8 space-y-2">
+          <div className="text-3xl font-semibold tracking-tight text-primary-foreground">猎洞</div>
+          <div className="text-primary-foreground/60 text-xs font-medium tracking-[0.35em] uppercase">VulnHunt</div>
         </div>
       </div>
 
@@ -104,7 +108,7 @@ export default function LoginPage() {
         <div className="w-full max-w-md space-y-10 py-24 lg:py-32">
           <div className="space-y-4 text-center">
             <h2 className="text-2xl font-medium tracking-tight">登录</h2>
-            <p className="mx-auto max-w-xl text-muted-foreground">欢迎回来，请输入密码以继续使用 ARTEX</p>
+            <p className="mx-auto max-w-xl text-muted-foreground">欢迎回来，请输入密码以继续使用猎洞</p>
           </div>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="space-y-1.5">
