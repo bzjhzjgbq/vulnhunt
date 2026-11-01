@@ -1974,3 +1974,14 @@ export interface SRCStandard {
   scope?: string[];
   notes?: string[];
 }
+
+// 资产按 SRC 项目（任务）聚合的概览，用于资产页项目切换。
+export interface AssetProject {
+  task_id: string;
+  task_name: string;
+  program_id?: number;
+  program_name?: string;
+  label: string;
+  total: number;
+  counts: Record<string, number>;
+}
