@@ -8,6 +8,7 @@ import {
   ArrowUpRightIcon,
   BugIcon,
   ChevronRightIcon,
+  ClipboardCheckIcon,
   ClockIcon,
   DownloadIcon,
   InfoIcon,
@@ -53,6 +54,8 @@ import type {
   FindingStats,
   FindingStatus,
   Severity,
+  StandardReview,
+  Task,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -275,6 +278,59 @@ export default function FindingsPage() {
   const [exportTemplate, setExportTemplate] = React.useState<"" | "butian" | "vulbox">("");
   const [reviewing, setReviewing] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
+
+  // 标准体检：按任务所属 SRC 平台的收录标准，筛出平台不收或等级不够的待处理发现，
+  // 人工确认后批量标记为「忽略」（只改状态，不删除）。
+  const [stdOpen, setStdOpen] = React.useState(false);
+  const [stdTasks, setStdTasks] = React.useState<Task[]>([]);
+  const [stdTaskId, setStdTaskId] = React.useState("");
+  const [stdLoading, setStdLoading] = React.useState(false);
+  const [stdReview, setStdReview] = React.useState<StandardReview | null>(null);
+  const [stdSelected, setStdSelected] = React.useState<Set<number>>(new Set());
+  const [stdApplying, setStdApplying] = React.useState(false);
+
+  async function openStandardReview() {
+    setStdOpen(true);
+    try {
+      const resp = await api.tasks();
+      setStdTasks(resp.tasks);
+      if (!stdTaskId) setStdTaskId(resp.active || resp.tasks[0]?.id || "");
+    } catch (e) {
+      toast.error(`加载任务失败：${(e as Error).message}`);
+    }
+  }
+
+  async function runStandardReview() {
+    if (!stdTaskId) return;
+    setStdLoading(true);
+    setStdReview(null);
+    try {
+      const resp = await api.standardReview(stdTaskId);
+      setStdReview(resp);
+      // 默认不勾选：关键词匹配可能有误伤，必须由人确认后再忽略。
+      setStdSelected(new Set());
+    } catch (e) {
+      toast.error(`体检失败：${(e as Error).message}`);
+    } finally {
+      setStdLoading(false);
+    }
+  }
+
+  async function applyStandardReview() {
+    if (!stdTaskId || stdSelected.size === 0) return;
+    setStdApplying(true);
+    try {
+      const resp = await api.applyStandardReview(stdTaskId, [...stdSelected]);
+      toast.success(`已忽略 ${resp.ignored} 条不符合收录标准的发现`);
+      setStdOpen(false);
+      setStdReview(null);
+      setStdSelected(new Set());
+    } catch (e) {
+      toast.error(`忽略失败：${(e as Error).message}`);
+    } finally {
+      setStdApplying(false);
+    }
+  }
 
   const toggleSelected = React.useCallback((id: string, checked: boolean) => {
     setSelectedIds((prev) => {
@@ -1022,6 +1078,9 @@ export default function FindingsPage() {
             <Button size="sm" variant="outline" onClick={openExport}>
               <DownloadIcon /> 导出
             </Button>
+            <Button size="sm" variant="outline" onClick={() => void openStandardReview()}>
+              <ClipboardCheckIcon /> 标准体检
+            </Button>
           </div>
         </div>
 
@@ -1369,6 +1428,109 @@ export default function FindingsPage() {
             </Button>
             <Button onClick={doExport} disabled={exporting || (exportScope === "selected" && selectedIds.size === 0)}>
               <DownloadIcon /> {exporting ? "导出中…" : "导出"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={stdOpen} onOpenChange={setStdOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>标准体检</DialogTitle>
+            <DialogDescription>
+              按任务所属 SRC 平台（补天 / 漏洞盒子 / 通用口径）的收录标准，筛出「平台不收」或「等级不够」的待处理发现。
+              确认后只会标记为「忽略」，不删除数据，之后仍可在状态筛选里找回。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-1">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                <span className="text-xs font-medium">任务</span>
+                <NativeSelect value={stdTaskId} onChange={(e) => setStdTaskId(e.target.value)}>
+                  <NativeSelectOption value="">选择任务</NativeSelectOption>
+                  {stdTasks.map((t) => (
+                    <NativeSelectOption key={t.id} value={t.id}>
+                      #{t.id} · {t.name?.trim() || (t.description || "").slice(0, 40) || "未命名"}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+              <Button onClick={() => void runStandardReview()} disabled={!stdTaskId || stdLoading}>
+                {stdLoading ? <Spinner /> : <ClipboardCheckIcon />} 开始体检
+              </Button>
+            </div>
+
+            {stdReview ? (
+              <>
+                <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span>
+                    标准：<b className="text-foreground">{stdReview.standard_name}</b>（最低 {stdReview.min_severity}）
+                  </span>
+                  <span>待处理 {stdReview.total}</span>
+                  <span className="text-amber-600 dark:text-amber-400">命中 {stdReview.flagged.length}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">保留 {stdReview.keep}</span>
+                </div>
+
+                {stdReview.flagged.length === 0 ? (
+                  <div className="text-muted-foreground rounded-md border px-3 py-6 text-center text-sm">
+                    没有命中项，当前待处理发现都符合该平台标准。
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <label className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium">
+                      <Checkbox
+                        checked={stdSelected.size === stdReview.flagged.length}
+                        onCheckedChange={(v) =>
+                          setStdSelected(v === true ? new Set(stdReview.flagged.map((f) => f.id)) : new Set())
+                        }
+                      />
+                      全选（{stdSelected.size}/{stdReview.flagged.length}）
+                    </label>
+                    <div className="max-h-72 overflow-auto">
+                      {stdReview.flagged.map((f) => (
+                        <label key={f.id} className="flex items-start gap-2 border-b px-3 py-2 last:border-b-0">
+                          <Checkbox
+                            className="mt-0.5"
+                            checked={stdSelected.has(f.id)}
+                            onCheckedChange={(v) =>
+                              setStdSelected((prev) => {
+                                const next = new Set(prev);
+                                if (v === true) next.add(f.id);
+                                else next.delete(f.id);
+                                return next;
+                              })
+                            }
+                          />
+                          <span className="flex min-w-0 flex-col gap-0.5">
+                            <span className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="font-medium">{f.name}</span>
+                              <span className="text-muted-foreground uppercase">{f.severity || "unknown"}</span>
+                            </span>
+                            <span className="text-muted-foreground text-xs">{f.reason}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs">
+                选择一个任务后点「开始体检」，先预览再决定忽略哪些。
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStdOpen(false)} disabled={stdApplying}>
+              关闭
+            </Button>
+            <Button
+              onClick={() => void applyStandardReview()}
+              disabled={stdApplying || stdSelected.size === 0}
+            >
+              {stdApplying ? <Spinner /> : null}忽略选中（{stdSelected.size}）
             </Button>
           </DialogFooter>
         </DialogContent>

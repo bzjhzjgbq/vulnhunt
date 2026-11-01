@@ -32,6 +32,32 @@
         "存疑时一律跳过，不要强行上报",
         "目标连不上（DNS 失败/超时/拒绝）直接跳过并注明 unreachable，不要反复重试",
         "每条 finding 必须有 HTTP 请求/响应原文或等价可复现证据"
+      ],
+      "reject_keywords": [
+        "CORS",
+        "CSP",
+        "HSTS",
+        "X-Frame-Options",
+        "Cookie",
+        "SSL",
+        "TLS",
+        "证书",
+        "源码泄露",
+        "source map",
+        "SourceMap",
+        "Key 泄露",
+        "Key泄露",
+        "目录遍历",
+        "内网 IP",
+        "内网IP",
+        "版本",
+        "指纹",
+        "并发",
+        "PDF",
+        "弱哈希",
+        "MD5",
+        "理论",
+        "未授权接口"
       ]
     },
     {
@@ -56,6 +82,20 @@
         "同一系统同类高危漏洞不要批量堆叠：先提交最有代表性的 1-3 条",
         "低危类默认不挖，除非能升级成中危以上影响",
         "报告需要可复现的请求与原样响应片段"
+      ],
+      "reject_keywords": [
+        "功能缺陷",
+        "乱码",
+        "样式",
+        "目录遍历",
+        "CSRF",
+        "异常信息",
+        "内网 IP",
+        "内网IP",
+        "猜测",
+        "版本",
+        "指纹",
+        "并发"
       ]
     },
     {
@@ -96,6 +136,45 @@
         "只做中危及以上；低危/信息类默认不产出",
         "无法证明实际影响的方向直接跳过，不写 finding",
         "同一目标同类问题合并成一条报告，不要刷量"
+      ],
+      "reject_keywords": [
+        "版本",
+        "指纹",
+        "Server 头",
+        "目录列表",
+        "目录遍历",
+        "CORS",
+        "CSP",
+        "HSTS",
+        "X-Frame-Options",
+        "Cookie",
+        "SSL",
+        "TLS",
+        "证书",
+        "自 XSS",
+        "自XSS",
+        "CSRF",
+        "点击劫持",
+        "开放重定向",
+        "邮箱枚举",
+        "账号枚举",
+        "短信",
+        "轰炸",
+        "速率限制",
+        "DoS",
+        "拒绝服务",
+        "钓鱼",
+        "社工",
+        "物理访问",
+        "日志",
+        "内网 IP",
+        "内网IP",
+        "内网域名",
+        "源码泄露",
+        "第三方组件",
+        "DNS Log",
+        "API Key",
+        "公开资料"
       ]
     }
   ],
@@ -103,7 +182,14 @@
     {
       "id": "oocl",
       "name": "货讯通 OOCL（补天）",
-      "match": ["oocl", "货讯通", "cargosmart", "schedulingsmart", "equippool", "weikayun"],
+      "match": [
+        "oocl",
+        "货讯通",
+        "cargosmart",
+        "schedulingsmart",
+        "equippool",
+        "weikayun"
+      ],
       "platform": "butian",
       "scope": [
         "*.oocl.com、*.cargosmart.com、*.schedulingsmart.com、*.equippool.com、*.oocllogistics.com、*.weikayun.com、iac.oocl.com"
@@ -116,9 +202,14 @@
     {
       "id": "airbnb",
       "name": "Airbnb AirSRC（漏洞盒子）",
-      "match": ["airbnb", "爱彼迎"],
+      "match": [
+        "airbnb",
+        "爱彼迎"
+      ],
       "platform": "vulbox",
-      "scope": ["*.airbnb.cn 及其子域、zh.airbnb.com、爱彼迎移动版 APP（iOS/Android/鸿蒙）、微信小程序"],
+      "scope": [
+        "*.airbnb.cn 及其子域、zh.airbnb.com、爱彼迎移动版 APP（iOS/Android/鸿蒙）、微信小程序"
+      ],
       "rejects": [
         "内部已知漏洞、短信/邮件轰炸等速率限制类、DoS、钓鱼、社工",
         "反射型文件下载、软件版本泄漏、需物理访问",
@@ -137,10 +228,22 @@
     {
       "id": "bilibili",
       "name": "哔哩哔哩 BILISRC（漏洞盒子）",
-      "match": ["bilibili", "哔哩哔哩", "biligame"],
+      "match": [
+        "bilibili",
+        "哔哩哔哩",
+        "biligame"
+      ],
       "platform": "vulbox",
-      "scope": ["*.bilibili.com", "*.biligame.com", "*.bilibiligame.net", "哔哩哔哩官方发布的客户端产品"],
-      "rejects": ["必剪（bcut）业务暂不收取", "对业务安全无实际影响的报告不计分"],
+      "scope": [
+        "*.bilibili.com",
+        "*.biligame.com",
+        "*.bilibiligame.net",
+        "哔哩哔哩官方发布的客户端产品"
+      ],
+      "rejects": [
+        "必剪（bcut）业务暂不收取",
+        "对业务安全无实际影响的报告不计分"
+      ],
       "notes": [
         "客户端漏洞必须证明真实可读/可写用户数据，纯静态推断的中危默认不上报",
         "同一客户端同类组件问题合并成一条报告"
@@ -149,7 +252,15 @@
     {
       "id": "oppo",
       "name": "OPPO OSRC（漏洞盒子）",
-      "match": ["oppo", "opposhop", "coloros", "heytap", "realme", "myoppo", "myoas"],
+      "match": [
+        "oppo",
+        "opposhop",
+        "coloros",
+        "heytap",
+        "realme",
+        "myoppo",
+        "myoas"
+      ],
       "platform": "vulbox",
       "scope": [
         "OPPO 自有业务：*.oppo.com、*.oppo.cn、*.myoppo.com、*.opposhop.cn、*.coloros.com、*.nearme.com、*.oppomobile.com、*.oppofind.com、*.myoas.com、*.heytap.com、*.heytapmobi.com、*.realme.com、*.realme.net"
@@ -162,68 +273,110 @@
     {
       "id": "tencent",
       "name": "腾讯 TSRC",
-      "match": ["tencent", "腾讯"],
+      "match": [
+        "tencent",
+        "腾讯"
+      ],
       "platform": "generic-vendor",
-      "notes": ["TSRC 对低危与信息类问题基本不收，优先高危/RCE/账号接管"]
+      "notes": [
+        "TSRC 对低危与信息类问题基本不收，优先高危/RCE/账号接管"
+      ]
     },
     {
       "id": "alibaba",
       "name": "阿里 ASRC",
-      "match": ["alibaba", "阿里", "aliyun", "taobao", "tmall"],
+      "match": [
+        "alibaba",
+        "阿里",
+        "aliyun",
+        "taobao",
+        "tmall"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "bytedance",
       "name": "字节跳动 SRC",
-      "match": ["bytedance", "字节", "douyin", "toutiao"],
+      "match": [
+        "bytedance",
+        "字节",
+        "douyin",
+        "toutiao"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "baidu",
       "name": "百度 BSRC",
-      "match": ["baidu", "百度"],
+      "match": [
+        "baidu",
+        "百度"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "jd",
       "name": "京东 JSRC",
-      "match": ["jd.com", "京东"],
+      "match": [
+        "jd.com",
+        "京东"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "meituan",
       "name": "美团 SRC",
-      "match": ["meituan", "美团", "dianping"],
+      "match": [
+        "meituan",
+        "美团",
+        "dianping"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "didi",
       "name": "滴滴 SRC",
-      "match": ["didi", "滴滴"],
+      "match": [
+        "didi",
+        "滴滴"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "kuaishou",
       "name": "快手 SRC",
-      "match": ["kuaishou", "快手"],
+      "match": [
+        "kuaishou",
+        "快手"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "netease",
       "name": "网易 SRC",
-      "match": ["netease", "网易", "163.com"],
+      "match": [
+        "netease",
+        "网易",
+        "163.com"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "xiaomi",
       "name": "小米 SRC",
-      "match": ["xiaomi", "小米"],
+      "match": [
+        "xiaomi",
+        "小米"
+      ],
       "platform": "generic-vendor"
     },
     {
       "id": "huawei",
       "name": "华为 SRC",
-      "match": ["huawei", "华为"],
+      "match": [
+        "huawei",
+        "华为"
+      ],
       "platform": "generic-vendor"
     }
   ]
