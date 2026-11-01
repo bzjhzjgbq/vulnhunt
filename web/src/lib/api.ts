@@ -88,6 +88,7 @@ import type {
   SRCProgram,
   BountySubmission,
   BountySummary,
+  StandardReview,
   SRCStandard,
   ScopeCandidate,
   SSProject,
@@ -515,6 +516,14 @@ export const api = {
   // 空账本时后端返回 by_program:null（Go nil slice），这里统一成数组，页面不必处处防空。
   bountySummary: () =>
     get<BountySummary>("/bounty/summary").then((s) => ({ ...s, by_program: arr(s.by_program) })),
+  // 标准体检：预览按收录标准命中「不收/等级不够」的待处理发现，确认后批量忽略。
+  standardReview: (taskId: string) =>
+    get<StandardReview>(`/tasks/${encodeURIComponent(taskId)}/standard-review`).then((r) => ({
+      ...r,
+      flagged: arr(r.flagged),
+    })),
+  applyStandardReview: (taskId: string, ids: number[]) =>
+    post<{ ok: boolean; ignored: number }>(`/tasks/${encodeURIComponent(taskId)}/standard-review/apply`, { ids }),
   createBounty: (body: Partial<BountySubmission>) => post<BountySubmission>("/bounty/submissions", body),
   updateBounty: (id: number, body: Partial<BountySubmission>) =>
     patch<BountySubmission>(`/bounty/submissions/${id}`, body),

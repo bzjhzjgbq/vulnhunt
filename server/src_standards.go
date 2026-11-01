@@ -32,6 +32,8 @@ type SRCStandard struct {
 	Rejects     []string `json:"rejects,omitempty"`
 	Scope       []string `json:"scope,omitempty"`
 	Notes       []string `json:"notes,omitempty"`
+	// RejectKeywords 供「标准体检」匹配：命中即视为平台不收的类型（来自 rejects 的可判定子集）。
+	RejectKeywords []string `json:"reject_keywords,omitempty"`
 }
 
 type srcStandardBook struct {
@@ -113,15 +115,16 @@ func resolveSRCStandard(program *db.SRCProgram) *SRCStandard {
 		return &SRCStandard{ID: "generic-vendor", Name: "通用口径", MinSeverity: "medium"}
 	}
 	out := &SRCStandard{
-		ID:          base.ID,
-		Name:        base.Name,
-		Platform:    base.ID,
-		Source:      base.Source,
-		Confidence:  base.Confidence,
-		MinSeverity: base.MinSeverity,
-		Accepts:     append([]string(nil), base.Accepts...),
-		Rejects:     append([]string(nil), base.Rejects...),
-		Notes:       append([]string(nil), base.Notes...),
+		ID:             base.ID,
+		Name:           base.Name,
+		Platform:       base.ID,
+		Source:         base.Source,
+		Confidence:     base.Confidence,
+		MinSeverity:    base.MinSeverity,
+		Accepts:        append([]string(nil), base.Accepts...),
+		Rejects:        append([]string(nil), base.Rejects...),
+		Notes:          append([]string(nil), base.Notes...),
+		RejectKeywords: append([]string(nil), base.RejectKeywords...),
 	}
 	if override != nil {
 		out.ID = override.ID
@@ -132,6 +135,7 @@ func resolveSRCStandard(program *db.SRCProgram) *SRCStandard {
 		}
 		out.Rejects = append(out.Rejects, override.Rejects...)
 		out.Notes = append(out.Notes, override.Notes...)
+		out.RejectKeywords = append(out.RejectKeywords, override.RejectKeywords...)
 		out.MinSeverity = maxSeverity(out.MinSeverity, override.MinSeverity)
 		if override.Source != "" {
 			out.Source = override.Source

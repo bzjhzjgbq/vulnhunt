@@ -1956,6 +1956,27 @@ export interface BountySummary {
   by_program: BountyProgramStat[];
 }
 
+// 标准体检（GET /api/tasks/{id}/standard-review）：按平台收录标准筛出的待忽略项。
+export interface StandardReviewItem {
+  id: number;
+  name: string;
+  vulnclass: string;
+  severity: string;
+  reason: string;
+  keyword?: string;
+}
+
+export interface StandardReview {
+  task_id: string;
+  task_name: string;
+  standard_id: string;
+  standard_name: string;
+  min_severity: string;
+  total: number;
+  keep: number;
+  flagged: StandardReviewItem[];
+}
+
 // Candidate scope entry extracted from a program's public page.
 export interface ScopeCandidate {
   value: string;
