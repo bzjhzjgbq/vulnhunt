@@ -10,5 +10,5 @@ export default function HomePage() {
   React.useEffect(() => {
     router.replace("/workbench");
   }, [router]);
-  return <div className="text-muted-foreground p-8 text-sm">正在进入赏金工作台…</div>;
+  return <div className="text-muted-foreground p-8 text-sm">正在进入猎洞工作台…</div>;
 }

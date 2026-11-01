@@ -3,11 +3,12 @@ import packageJson from "../../package.json";
 const currentYear = new Date().getFullYear();
 
 export const APP_CONFIG = {
-  name: "ARTEX",
+  name: "猎洞",
+  latinName: "VulnHunt",
   version: packageJson.version,
-  copyright: `© ${currentYear}, ARTEX.`,
+  copyright: `© ${currentYear}, 猎洞 VulnHunt.`,
   meta: {
-    title: "ARTEX · SRC 赏金挖掘工作台",
-    description: "从 SRC 平台选目标、自动挖洞、提交并记账的赏金工作台",
+    title: "猎洞 · SRC 赏金挖掘工作台",
+    description: "选 SRC 目标、按各家收录标准自动挖洞、提交并记账的赏金工作台",
   },
 };

@@ -1,13 +1,13 @@
 <div align="center">
 
-# ARTEX
+# 猎洞 VulnHunt
 
-AI 自主渗透测试系统（Go 后端 + Next.js 前端）
+SRC 赏金挖掘工作台（Go 后端 + Next.js 前端）：按各平台收录标准选目标、自动挖洞、提交并记账。
+
+> 由 ARTEX 改造而来；内部二进制/数据库/环境变量仍沿用 `artex` 命名以保持兼容。
 
 
-🌐 **在线 Demo**： [https://artex-demo-ruoji6.vercel.app/](https://artex-demo-ruoji6.vercel.app/)
-
-📦 **该仓库为ARTEX最后一个版本纯源码备份，docker部署源失效自行让AI本地构建即可**
+🌐 **上游项目**：[RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX)（猎洞在其基础上按 SRC 赏金场景重构）
 
 </div>
 
