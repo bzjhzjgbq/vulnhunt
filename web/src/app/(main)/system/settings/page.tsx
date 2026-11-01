@@ -2,945 +2,489 @@
 
 import * as React from "react";
 
-import { CpuIcon, FlaskConicalIcon, KeyboardIcon, RadioTowerIcon, SearchIcon, ShieldAlertIcon } from "lucide-react";
+import Link from "next/link";
+
+import { BrainIcon, NetworkIcon, ServerCogIcon, ShieldCheckIcon, WrenchIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { APP_CONFIG } from "@/config/app-config";
 import { api } from "@/lib/api";
-import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
-import type { LLMProfile, Settings, WorkerPool } from "@/lib/types";
+import type { Settings } from "@/lib/types";
 
 import { BasicAuthCard } from "./_components/basic-auth-card";
 import { UpdateCard } from "./_components/update-card";
 
+// 系统设置：只保留赏金挖掘真正会用到的四组配置。
+// 旧版的凭据提取/情报/流量捕获/实验压缩/聊天发送模式等入口已随对应产品面下线。
+
 export default function SystemSettingsPage() {
-  const [credentialAgent, setCredentialAgent] = React.useState(false);
-  const [credentialBinding, setCredentialBinding] = React.useState(false);
-  const [savingCredentials, setSavingCredentials] = React.useState(false);
-  const [intelligenceEnabled, setIntelligenceEnabled] = React.useState(false);
-  const [savingIntelligence, setSavingIntelligence] = React.useState(false);
-  const [trafficCapture, setTrafficCapture] = React.useState(false);
-  const [agentTrafficBinding, setAgentTrafficBinding] = React.useState(false);
-  const [webSearch, setWebSearch] = React.useState(false);
-  const [backend, setBackend] = React.useState("ddgs");
-  const [braveKeySet, setBraveKeySet] = React.useState(false);
-  const [braveKeyInput, setBraveKeyInput] = React.useState("");
-  const [tavilyKeySet, setTavilyKeySet] = React.useState(false);
-  const [tavilyKeyInput, setTavilyKeyInput] = React.useState("");
-  const [savingTavilyKey, setSavingTavilyKey] = React.useState(false);
-  const [proxyInput, setProxyInput] = React.useState("");
-  const [savingProxy, setSavingProxy] = React.useState(false);
-  const [globalProxyInput, setGlobalProxyInput] = React.useState("");
-  const [savingGlobalProxy, setSavingGlobalProxy] = React.useState(false);
-  const [testing, setTesting] = React.useState(false);
-  const [loaded, setLoaded] = React.useState(false);
-  const [settingsLoaded, setSettingsLoaded] = React.useState(false);
+  const [settings, setSettings] = React.useState<Settings | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [savingKey, setSavingKey] = React.useState(false);
-  const [pyInterp, setPyInterp] = React.useState("");
+  const [loaded, setLoaded] = React.useState(false);
+
+  // 挖掘
   const [workers, setWorkers] = React.useState("3");
-  const [savingWorkers, setSavingWorkers] = React.useState(false);
-  const [workerPools, setWorkerPools] = React.useState<WorkerPool[]>([]);
-  const [llmProfiles, setLlmProfiles] = React.useState<LLMProfile[]>([]);
-  // 操作约束注入范围(默认都开)。
+  const [concEnabled, setConcEnabled] = React.useState(false);
+  const [concLimit, setConcLimit] = React.useState("5");
   const [injectPlanner, setInjectPlanner] = React.useState(true);
   const [injectWorker, setInjectWorker] = React.useState(true);
-  // 实验功能:noa 上下文压缩(默认关)。
-  const [noaCompaction, setNoaCompaction] = React.useState(false);
-  // 纯前端偏好：不走 /api/settings，直接读写 localStorage。
-  const sendMode = useChatSendMode();
+
+  // 网络
+  const [globalProxy, setGlobalProxy] = React.useState("");
+  const [webSearch, setWebSearch] = React.useState(false);
+  const [searchBackend, setSearchBackend] = React.useState("ddgs");
+  const [braveKey, setBraveKey] = React.useState("");
+  const [tavilyKey, setTavilyKey] = React.useState("");
+  const [searchProxy, setSearchProxy] = React.useState("");
+
+  // 维护
+  const [llmRecord, setLlmRecord] = React.useState(false);
+  const [pyInterp, setPyInterp] = React.useState("");
 
   const apply = React.useCallback((s: Settings) => {
-    setCredentialAgent(!!s.credential_agent_enabled);
-    setCredentialBinding(!!s.credential_traffic_binding);
-    setIntelligenceEnabled(!!s.task_intelligence_enabled);
-    setTrafficCapture(!!s.traffic_capture);
-    setAgentTrafficBinding(!!s.agent_traffic_binding);
-    setWebSearch(!!s.web_search_enabled);
-    setBackend(s.web_search_backend || "ddgs");
-    setBraveKeySet(!!s.brave_key_set);
-    setTavilyKeySet(!!s.tavily_key_set);
-    setProxyInput(s.web_search_proxy ?? "");
-    setGlobalProxyInput(s.global_proxy ?? "");
-    setPyInterp(s.python_interpreter ?? "");
+    setSettings(s);
     setWorkers(String(s.workers ?? 3));
-    setWorkerPools(s.worker_pools ?? []);
+    setConcEnabled(!!s.task_concurrency_enabled);
+    setConcLimit(String(s.task_concurrency_limit ?? 5));
     setInjectPlanner(s.constraints_inject_planner !== false);
     setInjectWorker(s.constraints_inject_worker !== false);
-    setNoaCompaction(!!s.noa_compaction);
+    setGlobalProxy(s.global_proxy ?? "");
+    setWebSearch(!!s.web_search_enabled);
+    setSearchBackend(s.web_search_backend || "ddgs");
+    setSearchProxy(s.web_search_proxy ?? "");
+    setLlmRecord(!!s.llm_record);
+    setPyInterp(s.python_interpreter ?? "");
   }, []);
-
-  const saveWorkers = () => {
-    if (!settingsLoaded) {
-      toast.error("设置加载失败，请刷新后再保存 Worker 配置");
-      return;
-    }
-    const n = Number(workers);
-    if (workerPools.length > 0) {
-      const total = workerPools.reduce((sum, pool) => sum + Number(pool.workers), 0);
-      if (workerPools.some((pool) => !pool.profile_id)) {
-        toast.error("请选择每个模型池的 LLM 配置");
-        return;
-      }
-      if (workerPools.some((pool) => !Number.isInteger(Number(pool.workers)) || Number(pool.workers) <= 0)) {
-        toast.error("每个模型池的 Worker 数必须是大于 0 的整数");
-        return;
-      }
-      if (total > 50) {
-        toast.error("Worker 总数不能超过 50");
-        return;
-      }
-      const ids = workerPools.map((pool) => pool.profile_id);
-      if (new Set(ids).size !== ids.length) {
-        toast.error("不能重复选择同一个 LLM 配置");
-        return;
-      }
-      setSavingWorkers(true);
-      api
-        .setSettings({
-          workers: total,
-          worker_pools: workerPools.map((pool) => ({ ...pool, workers: Number(pool.workers) })),
-        })
-        .then((s) => {
-          apply(s);
-          toast.success("已保存多模型 Worker 池（对之后启动的任务生效）");
-        })
-        .catch((e) => toast.error(`保存失败：${(e as Error).message}`))
-        .finally(() => setSavingWorkers(false));
-      return;
-    }
-    if (!Number.isInteger(n) || n <= 0) {
-      toast.error("并发数必须是大于 0 的整数");
-      return;
-    }
-    setSavingWorkers(true);
-    api
-      .setSettings({ workers: n, worker_pools: [] })
-      .then((s) => {
-        apply(s);
-        toast.success("已保存并发工作 agent 数（对之后启动的任务生效）");
-      })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
-      .finally(() => setSavingWorkers(false));
-  };
-
-  const addWorkerPool = () => setWorkerPools((pools) => [...pools, { profile_id: "", workers: 1 }]);
-
-  const savePython = () => {
-    setSaving(true);
-    api
-      .setSettings({ python_interpreter: pyInterp.trim() })
-      .then((s) => {
-        apply(s);
-        toast.success("已保存 Python 解释器配置");
-      })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
-      .finally(() => setSaving(false));
-  };
-  const detectPython = () => {
-    setSaving(true);
-    api
-      .detectPython()
-      .then((r) => setPyInterp(r.python_interpreter))
-      .catch(() => undefined)
-      .finally(() => setSaving(false));
-  };
 
   React.useEffect(() => {
     api
       .settings()
       .then((s) => {
         apply(s);
-        setSettingsLoaded(true);
+        setLoaded(true);
       })
-      .catch(() => {
-        setSettingsLoaded(false);
-        toast.error("设置加载失败，Worker 配置已锁定，避免覆盖服务器上的模型池");
-      })
-      .finally(() => setLoaded(true));
+      .catch((e) => toast.error(`加载设置失败：${(e as Error).message}`));
   }, [apply]);
 
-  React.useEffect(() => {
-    api
-      .llmProfiles()
-      .then(setLlmProfiles)
-      .catch(() => setLlmProfiles([]));
-  }, []);
-
-  const toggleTraffic = (v: boolean) => {
-    setTrafficCapture(v); // optimistic
-    setSaving(true);
-    api
-      .setSettings({ traffic_capture: v })
-      .then(apply)
-      .catch(() => setTrafficCapture(!v)) // revert on failure
-      .finally(() => setSaving(false));
-  };
-
-  const toggleInjectPlanner = (v: boolean) => {
-    setInjectPlanner(v); // optimistic
-    api
-      .setSettings({ constraints_inject_planner: v })
-      .then(apply)
-      .catch(() => setInjectPlanner(!v)); // revert on failure
-  };
-
-  const toggleAgentTrafficBinding = (v: boolean) => {
-    setAgentTrafficBinding(v);
-    setSaving(true);
-    api
-      .setSettings({ agent_traffic_binding: v })
-      .then((s) => {
+  const patch = React.useCallback(
+    async (p: Partial<Settings>, message = "已保存") => {
+      setSaving(true);
+      try {
+        const s = await api.setSettings(p);
         apply(s);
-        toast.success(v ? "已开启 Agent 自动绑定流量" : "已关闭 Agent 自动绑定流量");
-      })
-      .catch((e) => {
-        setAgentTrafficBinding(!v);
+        toast.success(message);
+      } catch (e) {
         toast.error(`保存失败：${(e as Error).message}`);
-      })
-      .finally(() => setSaving(false));
-  };
+      } finally {
+        setSaving(false);
+      }
+    },
+    [apply],
+  );
 
-  const toggleInjectWorker = (v: boolean) => {
-    setInjectWorker(v); // optimistic
-    api
-      .setSettings({ constraints_inject_worker: v })
-      .then(apply)
-      .catch(() => setInjectWorker(!v)); // revert on failure
-  };
-
-  const toggleNoaCompaction = (v: boolean) => {
-    setNoaCompaction(v); // optimistic
-    api
-      .setSettings({ noa_compaction: v })
-      .then((s) => {
-        apply(s);
-        toast.success(v ? "已开启 noa 上下文压缩（对之后启动的运行生效）" : "已关闭 noa 上下文压缩（恢复内置压缩）");
-      })
-      .catch((e) => {
-        setNoaCompaction(!v); // revert on failure
-        toast.error(`保存失败：${(e as Error).message}`);
-      });
-  };
-
-  // Persist a web-search patch (enable and/or backend). Optimistic with refetch.
-  const saveWebSearch = (patch: Partial<Settings>) => {
-    setSaving(true);
-    api
-      .setSettings(patch)
-      .then((s) => {
-        apply(s);
-        toast.success("已保存网络搜索配置");
-      })
-      .catch((e) => {
-        toast.error("保存失败：" + (e as Error).message);
-        api
-          .settings()
-          .then(apply)
-          .catch(() => undefined);
-      })
-      .finally(() => setSaving(false));
-  };
-
-  const saveBraveKey = () => {
-    setSavingKey(true);
-    api
-      .setSettings({ brave_search_api_key: braveKeyInput })
-      .then((s) => {
-        apply(s);
-        setBraveKeyInput("");
-        toast.success("已保存 Brave API Key");
-      })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
-      .finally(() => setSavingKey(false));
-  };
-
-  const saveTavilyKey = () => {
-    setSavingTavilyKey(true);
-    api
-      .setSettings({ tavily_search_api_key: tavilyKeyInput })
-      .then((s) => {
-        apply(s);
-        setTavilyKeyInput("");
-        toast.success("已保存 Tavily API Key");
-      })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
-      .finally(() => setSavingTavilyKey(false));
-  };
-
-  const saveProxy = () => {
-    setSavingProxy(true);
-    api
-      .setSettings({ web_search_proxy: proxyInput.trim() })
-      .then((s) => {
-        apply(s);
-        toast.success(proxyInput.trim() ? "已保存出口代理" : "已清除出口代理（改为直连）");
-      })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
-      .finally(() => setSavingProxy(false));
-  };
-
-  const saveGlobalProxy = () => {
-    setSavingGlobalProxy(true);
-    api
-      .setSettings({ global_proxy: globalProxyInput.trim() })
-      .then((s) => {
-        apply(s);
-        toast.success(globalProxyInput.trim() ? "已保存全局代理" : "已清除全局代理（改为直连）");
-      })
-      .catch((e) => toast.error("保存失败：" + (e as Error).message))
-      .finally(() => setSavingGlobalProxy(false));
-  };
-
-  // Run a real "test" search ("test") against the CURRENT form values (backend +
-  // proxy + entered key), falling back to saved values server-side. Toasts result.
-  const runTest = () => {
-    setTesting(true);
-    api
-      .testWebSearch({
-        web_search_backend: backend,
-        web_search_proxy: proxyInput.trim(),
-        brave_search_api_key: braveKeyInput,
-        tavily_search_api_key: tavilyKeyInput,
-      })
-      .then((r) => {
-        if (r.ok) toast.success(`搜索测试成功 · ${r.backend} 返回 ${r.count} 条结果`);
-        else toast.error("搜索测试失败：" + (r.error || "未知错误"));
-      })
-      .catch((e) => toast.error("搜索测试失败：" + (e as Error).message))
-      .finally(() => setTesting(false));
-  };
-
-  // brave-free selected but no key stored and none being entered → tool stays off.
-  const braveNeedsKey = webSearch && backend === "brave-free" && !braveKeySet;
-
-  const saveCredentialOptions = async (patch: Partial<Settings>) => {
-    setSavingCredentials(true);
-    try {
-      const s = await api.setSettings(patch);
-      setCredentialAgent(!!s.credential_agent_enabled);
-      setCredentialBinding(!!s.credential_traffic_binding);
-      setIntelligenceEnabled(!!s.task_intelligence_enabled);
-      toast.success("凭据处理设置已保存");
-    } catch (e) {
-      toast.error("保存失败：" + (e as Error).message);
-    } finally {
-      setSavingCredentials(false);
+  function saveWorkers() {
+    const n = Number(workers);
+    if (!Number.isInteger(n) || n <= 0 || n > 50) {
+      toast.error("并发 Worker 必须是 1-50 的整数");
+      return;
     }
-  };
+    const p: Partial<Settings> = { workers: n };
+    // 多模型池 UI 已下线；存在旧池配置时一并清掉，否则并发数不会生效。
+    if ((settings?.worker_pools ?? []).length > 0) p.worker_pools = [];
+    void patch(p, "已保存并发配置（对之后启动的任务生效）");
+  }
+
+  function saveConcurrency(enabled: boolean, limitText = concLimit) {
+    const n = Number(limitText);
+    if (enabled && (!Number.isInteger(n) || n <= 0)) {
+      toast.error("并发任务上限必须是正整数");
+      return;
+    }
+    void patch({ task_concurrency_enabled: enabled, task_concurrency_limit: enabled ? n : 0 });
+  }
+
+  async function saveWebSearchKey(kind: "brave" | "tavily") {
+    const key = kind === "brave" ? braveKey.trim() : tavilyKey.trim();
+    if (!key) {
+      toast.error("请输入 API Key");
+      return;
+    }
+    await patch(
+      kind === "brave" ? { brave_search_api_key: key } : { tavily_search_api_key: key },
+      "API Key 已保存",
+    );
+    if (kind === "brave") setBraveKey("");
+    else setTavilyKey("");
+  }
+
   return (
-    <div className="flex flex-1 flex-col gap-4 md:gap-6">
+    <div className="flex flex-col gap-4 p-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">系统配置</h1>
-        <p className="text-muted-foreground text-sm">全局运行时开关</p>
+        <h1 className="text-xl font-semibold">系统设置</h1>
+        <p className="text-muted-foreground text-xs">
+          只保留赏金挖掘需要的配置：并发与约束、出口代理与搜索、访问控制、维护与版本。
+        </p>
       </div>
 
-      {/* 多列而非 grid：网络搜索卡片比其余高数倍，且高度随所选后端变化（brave/tavily
-          的 key 输入是条件渲染）。grid 会按最高的一张撑满整行、在旁边留下大片空白，
-          多列则自动按内容高度平衡填充。卡片间距靠 mb 而非 gap——多列布局下
-          column-gap 只管列间距，行间距要由子元素自己给。 */}
-      <div className="columns-1 gap-4 md:gap-6 lg:columns-2">
-        <UpdateCard />
-        <BasicAuthCard />
+      <Tabs defaultValue="mining" className="flex flex-col gap-4">
+        <TabsList variant="default" className="w-fit">
+          <TabsTrigger value="mining">
+            <ServerCogIcon className="size-3.5" /> 挖掘
+          </TabsTrigger>
+          <TabsTrigger value="network">
+            <NetworkIcon className="size-3.5" /> 网络与搜索
+          </TabsTrigger>
+          <TabsTrigger value="access">
+            <ShieldCheckIcon className="size-3.5" /> 访问控制
+          </TabsTrigger>
+          <TabsTrigger value="maintenance">
+            <WrenchIcon className="size-3.5" /> 维护与版本
+          </TabsTrigger>
+        </TabsList>
 
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <RadioTowerIcon className="size-4" />
-              流量捕获
-            </CardTitle>
-            <CardDescription>
-              开启后，所有 Agent 的 HTTP 流量经记录代理全量落库，并向 Agent 注入 traffic_search / traffic_get
-              工具与代理配置（提示词含代理说明）。
-              <br />
-              关闭（默认）时不记录任何流量：Agent
-              <b>不会</b>拿到代理配置与流量工具，提示词也<b>不含</b>代理相关内容。切换后会即时重建 Agent 生效。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <Label htmlFor="traffic-capture" className="text-sm font-normal text-muted-foreground">
-              {trafficCapture ? "已开启 · 正在记录流量并注入代理" : "已关闭 · 不记录、不注入代理"}
-            </Label>
-            <Switch
-              id="traffic-capture"
-              checked={trafficCapture}
-              disabled={!loaded || saving}
-              onCheckedChange={toggleTraffic}
-            />
-          </CardContent>
-        </Card>
+        <TabsContent value="mining" className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">并发</CardTitle>
+              <CardDescription>Worker 数对之后启动的任务生效；已有任务用任务页的「Worker 数」单独调。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-end gap-3">
+                <div className="flex w-40 flex-col gap-1.5">
+                  <Label htmlFor="workers">每个任务的 Worker 数</Label>
+                  <Input
+                    id="workers"
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={workers}
+                    onChange={(e) => setWorkers(e.target.value)}
+                    disabled={!loaded}
+                  />
+                </div>
+                <Button onClick={saveWorkers} disabled={!loaded || saving}>
+                  保存
+                </Button>
+                {(settings?.worker_pools ?? []).length > 0 ? (
+                  <span className="text-muted-foreground text-xs">
+                    检测到旧的多模型池配置，保存后会清空（当前只有一条模型链）
+                  </span>
+                ) : null}
+              </div>
 
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <RadioTowerIcon className="size-4" />
-              Agent 自动绑定流量
-            </CardTitle>
-            <CardDescription id="agent-traffic-binding-description">
-              默认关闭。开启后，漏洞入库时触发的报告 Agent 会核对已有 HTTP 请求/响应，关联对应流量后再编写报告。
-              <b>查阅数据包及额外的工具调用会增加 Token 消耗。</b>
-              <br />
-              TCP、未抓包或没有匹配流量时仍可正常上报。此开关不影响流量捕获、人工绑定及已保存证据的查看。 对下一轮 Agent
-              生效；关闭后会立即拒绝新的自动绑定。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <Label htmlFor="agent-traffic-binding" className="text-sm font-normal text-muted-foreground">
-              {agentTrafficBinding ? "已开启 · 会增加 Token 消耗" : "已关闭 · 可继续人工绑定"}
-            </Label>
-            <Switch
-              id="agent-traffic-binding"
-              aria-describedby="agent-traffic-binding-description"
-              checked={agentTrafficBinding}
-              disabled={!loaded || saving}
-              onCheckedChange={toggleAgentTrafficBinding}
-            />
-          </CardContent>
-        </Card>
+              <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="concurrency"
+                    checked={concEnabled}
+                    onCheckedChange={(v) => {
+                      setConcEnabled(v);
+                      if (!v) void saveConcurrency(false);
+                    }}
+                    disabled={!loaded}
+                  />
+                  <Label htmlFor="concurrency">限制同时运行的任务数</Label>
+                </div>
+                <div className="flex w-28 items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={concLimit}
+                    onChange={(e) => setConcLimit(e.target.value)}
+                    disabled={!loaded || !concEnabled}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => saveConcurrency(true)}
+                  disabled={!loaded || !concEnabled || saving}
+                >
+                  应用上限
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <RadioTowerIcon className="size-4" />
-              全局代理
-            </CardTitle>
-            <CardDescription>
-              所有 Agent 的<b>目标流量</b>经此代理出网（隐藏源 IP / 走跳板）。支持 <b>http / https / socks5</b>，可带{" "}
-              <code>user:pass</code> 认证。留空=直连。
-              <br />
-              开启<b>流量捕获</b>时，它作为记录代理的<b>上游</b>（流量仍全量落库，再经此代理出网）；关闭捕获时，直接注入
-              Agent 的 bash / WebFetch 出网。与网络搜索代理、LLM 代理相互独立。
-              <br />
-              <b>提示</b>：socks5 在<b>关闭捕获</b>时依赖各命令行工具对 <code>ALL_PROXY</code> 的支持（curl
-              可用，部分工具可能忽略）； 若主要用 socks5，建议开启流量捕获——此路径由 MITM
-              亲自拨号，工具无感知、稳定生效。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <Label htmlFor="global-proxy" className="text-sm font-normal text-muted-foreground">
-              代理地址
-            </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="global-proxy"
-                autoComplete="off"
-                placeholder="socks5://user:pass@host:1080 或 http://host:port（留空=直连）"
-                value={globalProxyInput}
-                disabled={!loaded || savingGlobalProxy}
-                onChange={(e) => setGlobalProxyInput(e.target.value)}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">收录标准与约束注入</CardTitle>
+              <CardDescription>
+                任务的 allow/deny 约束（含每次开测自动写入的 SRC 收录标准）是否拼进对应 Agent 的系统提示。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <ToggleRow
+                id="inject-planner"
+                title="注入规划者"
+                checked={injectPlanner}
+                disabled={!loaded || saving}
+                onChange={(v) => {
+                  setInjectPlanner(v);
+                  void patch({ constraints_inject_planner: v });
+                }}
               />
-              <Button type="button" onClick={saveGlobalProxy} disabled={!loaded || savingGlobalProxy}>
+              <ToggleRow
+                id="inject-worker"
+                title="注入执行 Worker"
+                checked={injectWorker}
+                disabled={!loaded || saving}
+                onChange={(v) => {
+                  setInjectWorker(v);
+                  void patch({ constraints_inject_worker: v });
+                }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BrainIcon className="size-4" /> 模型
+              </CardTitle>
+              <CardDescription>当前模型、Key 与故障转移在独立页面管理。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" asChild>
+                <Link href="/system/llm">打开 LLM 配置</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="network" className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">全局出口代理</CardTitle>
+              <CardDescription>
+                所有目标请求走这个代理（可带 user:pass）。部分 SRC 主机从本机不可达时，换代理往往能直接打开局面。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex items-end gap-3">
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="global-proxy">代理地址</Label>
+                <Input
+                  id="global-proxy"
+                  placeholder="http://user:pass@host:port 或 socks5://host:port"
+                  value={globalProxy}
+                  onChange={(e) => setGlobalProxy(e.target.value)}
+                  disabled={!loaded}
+                />
+              </div>
+              <Button onClick={() => void patch({ global_proxy: globalProxy.trim() })} disabled={!loaded || saving}>
                 保存
               </Button>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              {globalProxyInput.trim() ? "已配置 · 所有目标流量经此代理出网" : "未配置 · 目标流量直连出网"}
-            </p>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ShieldAlertIcon className="size-4" />
-              操作约束注入
-            </CardTitle>
-            <CardDescription>
-              开启后，把每个任务的<b>操作约束</b>（在任务总览「操作约束」里维护的 allow/deny 条目）拼进对应 Agent
-              的系统提示，用来框定探索边界（如「仅测当前端口」「禁止爆破」）。
-              <br />
-              可分别控制注入到 <b>规划者（planner）</b>与 <b>执行者（worker）</b>
-              ；默认都开。切换即时生效（下一轮读取），无需重建 Agent。关闭后该 Agent 不再看到约束。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="inject-planner" className="text-sm font-normal text-muted-foreground">
-                注入规划者（planner）{injectPlanner ? " · 已开启" : " · 已关闭"}
-              </Label>
-              <Switch
-                id="inject-planner"
-                checked={injectPlanner}
-                disabled={!loaded}
-                onCheckedChange={toggleInjectPlanner}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="inject-worker" className="text-sm font-normal text-muted-foreground">
-                注入执行者（worker）{injectWorker ? " · 已开启" : " · 已关闭"}
-              </Label>
-              <Switch
-                id="inject-worker"
-                checked={injectWorker}
-                disabled={!loaded}
-                onCheckedChange={toggleInjectWorker}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FlaskConicalIcon className="size-4" />
-              实验功能
-            </CardTitle>
-            <CardDescription>
-              尚在验证中的机制，默认关闭。可能改变 Agent 行为或影响稳定性，请在了解影响后启用。
-              <br />
-              <b>noa 上下文压缩</b>：由模型主动压缩长对话历史（norma v0.4.0）。开启后平台接入的四类 Agent（
-              <b>规划者 / 执行者 / 主 Agent / 对话</b>）改用 noa 接管上下文，取代内置压缩，
-              压缩原文会归档到任务工作目录下便于回溯。切换即时生效（对之后启动的运行生效），无需重建 Agent；
-              关闭后立即恢复内置压缩。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <Label htmlFor="noa-compaction" className="text-sm font-normal text-muted-foreground">
-              noa 上下文压缩{noaCompaction ? " · 已开启" : " · 已关闭"}
-            </Label>
-            <Switch
-              id="noa-compaction"
-              checked={noaCompaction}
-              disabled={!loaded}
-              onCheckedChange={toggleNoaCompaction}
-            />
-          </CardContent>
-        </Card>
-
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle>任务情报</CardTitle>
-            <CardDescription>自动记录任务中获取的凭据、重要线索和敏感数据，并保留来源证据。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Field orientation="horizontal">
-              <FieldContent>
-                <FieldLabel htmlFor="task-intelligence">Agent 自动记录</FieldLabel>
-                <FieldDescription>
-                  默认关闭。任务执行时上报凭据、重要线索和敏感数据，会增加任务 Agent 的提示与上报
-                  Token。仅负责记录，不启动凭据整理。关闭后同时停用下方 Agent 与流量绑定，已有情报和整理结果仍可查看。
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                id="task-intelligence"
-                checked={intelligenceEnabled}
-                disabled={!loaded || savingIntelligence || savingCredentials}
-                onCheckedChange={async (value) => {
-                  setSavingIntelligence(true);
-                  try {
-                    const settings = await api.setSettings({ task_intelligence_enabled: value });
-                    setIntelligenceEnabled(!!settings.task_intelligence_enabled);
-                    setCredentialAgent(!!settings.credential_agent_enabled);
-                    setCredentialBinding(!!settings.credential_traffic_binding);
-                    toast.success(value ? "任务情报自动记录已开启" : "任务情报自动记录已关闭");
-                  } catch (error) {
-                    toast.error("保存失败：" + (error as Error).message);
-                  } finally {
-                    setSavingIntelligence(false);
-                  }
-                }}
-              />
-            </Field>
-            <Field orientation="horizontal" className="mt-5">
-              <FieldContent>
-                <FieldLabel htmlFor="credential-agent">Agent 开关</FieldLabel>
-                <FieldDescription>
-                  默认关闭。独立整理已有和新增凭据，拆分并高亮账号、密码、Token 和
-                  Cookie，不改变原始上报或验证状态。复杂文本会使用额外模型 Token；可解析的 JSON
-                  无需模型。需先开启上方自动记录。模型可在「Agent → 凭据整理」中配置。
-                </FieldDescription>
-              </FieldContent>
-              <Switch
-                id="credential-agent"
-                checked={credentialAgent}
-                disabled={!loaded || savingCredentials || savingIntelligence || !intelligenceEnabled}
-                onCheckedChange={(value) => void saveCredentialOptions({ credential_agent_enabled: value })}
-              />
-            </Field>
-            {credentialAgent ? (
-              <Field orientation="horizontal" className="mt-5">
-                <FieldContent>
-                  <FieldLabel htmlFor="credential-traffic">绑定流量</FieldLabel>
-                  <FieldDescription>
-                    默认关闭，仅在 Agent
-                    开关开启时可用。核对已抓取流量中的资产与凭据，关联真实请求或响应并保存匹配片段；不主动登录，也不把匹配流量视为验证成功。关闭
-                    Agent 时同时停用，已有绑定保留。
-                  </FieldDescription>
-                </FieldContent>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">联网搜索</CardTitle>
+              <CardDescription>用于资产发现和资料检索；独立于上面的目标代理。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
                 <Switch
-                  id="credential-traffic"
-                  checked={credentialBinding}
-                  disabled={!loaded || savingCredentials}
-                  onCheckedChange={(value) => void saveCredentialOptions({ credential_traffic_binding: value })}
-                />
-              </Field>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <SearchIcon className="size-4" />
-              网络搜索
-            </CardTitle>
-            <CardDescription>
-              这是网络搜索的<b>总开关 + 来源配置</b>。开启后，才能在<b>每个 Agent 的配置</b>里单独选择是否启用
-              <b>web_search</b>（仅返回标题/链接/摘要，不抓取正文；抓取由 WebFetch 负责）。网络搜索<b>不走</b>
-              记录代理，独立于流量捕获。
-              <br />
-              来源可选 <b>DuckDuckGo（ddgs）</b>（无需 Key）、<b>Brave（免费版）</b>（需填写 Brave API Key）、{" "}
-              <b>Tavily</b>（需填写 Tavily API Key）或 <b>DeepSeek</b>（复用当前 LLM 配置）。总开关关闭时，各 Agent
-              的网络搜索开关不可用。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-4">
-              <Label htmlFor="web-search" className="text-sm font-normal text-muted-foreground">
-                {webSearch ? "总开关已开启 · 可在各 Agent 配置里单独启用" : "已关闭 · 各 Agent 无法启用网络搜索"}
-              </Label>
-              <Switch
-                id="web-search"
-                checked={webSearch}
-                disabled={!loaded || saving}
-                onCheckedChange={(v) => {
-                  setWebSearch(v); // optimistic
-                  saveWebSearch({ web_search_enabled: v });
-                }}
-              />
-            </div>
-
-            {webSearch && (
-              <div className="flex items-center justify-between gap-4">
-                <Label className="text-sm font-normal text-muted-foreground">搜索来源</Label>
-                <Select
-                  value={backend}
-                  disabled={!loaded || saving}
-                  onValueChange={(v) => {
-                    setBackend(v); // optimistic
-                    saveWebSearch({ web_search_backend: v });
+                  id="web-search"
+                  checked={webSearch}
+                  onCheckedChange={(v) => {
+                    setWebSearch(v);
+                    void patch({ web_search_enabled: v });
                   }}
+                  disabled={!loaded || saving}
+                />
+                <Label htmlFor="web-search">启用联网搜索</Label>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm">搜索后端</span>
+                <Select
+                  value={searchBackend}
+                  onValueChange={(v) => {
+                    setSearchBackend(v);
+                    void patch({ web_search_backend: v });
+                  }}
+                  disabled={!loaded || !webSearch}
                 >
-                  <SelectTrigger className="w-48 shrink-0">
-                    <SelectValue placeholder="选择来源" />
+                  <SelectTrigger className="w-44">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ddgs">DuckDuckGo（ddgs · 免费无 Key）</SelectItem>
-                    <SelectItem value="brave-free">Brave（免费版 · 需 Key）</SelectItem>
-                    <SelectItem value="tavily">Tavily（需 Key）</SelectItem>
-                    <SelectItem value="deepseek">DeepSeek（官方）</SelectItem>
+                    <SelectItem value="ddgs">DuckDuckGo (免 Key)</SelectItem>
+                    <SelectItem value="brave-free">Brave</SelectItem>
+                    <SelectItem value="tavily">Tavily</SelectItem>
+                    <SelectItem value="deepseek">DeepSeek</SelectItem>
                   </SelectContent>
                 </Select>
+                {settings?.brave_key_set ? <Badge variant="secondary">Brave Key 已配置</Badge> : null}
+                {settings?.tavily_key_set ? <Badge variant="secondary">Tavily Key 已配置</Badge> : null}
               </div>
-            )}
 
-            {webSearch && backend === "deepseek" && (
-              <div className="border-border/60 bg-muted/30 flex flex-col gap-2 rounded-md border p-3">
-                <p className="text-sm font-medium">DeepSeek 官方联网搜索</p>
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  该来源直接复用<b>当前激活的 LLM 配置</b>。因此它
-                  <b>仅支持 DeepSeek 官方模型</b>，且该配置<b>必须使用 anthropic 协议</b>
-                  ——DeepSeek 的 OpenAI 协议端点不支持服务端搜索。切换 LLM 配置后此来源可能失效。
-                </p>
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  与其它来源不同，搜索由 <b>DeepSeek 服务端执行</b>：每次搜索会额外消耗一次模型调用（产生 Token
-                  费用），搜索请求<b>不经过上面的出口代理</b>，也<b>不计入流量留痕</b>；返回结果<b>只有标题和链接</b>
-                  （无摘要），需要正文时由 WebFetch 抓取。
-                </p>
-                <p className="text-muted-foreground text-xs leading-relaxed">
-                  是否满足上述条件由你自行确认，系统不做拦截；可用下方「测试搜索」按钮实际跑一次来验证。
-                </p>
-              </div>
-            )}
-
-            {webSearch && backend === "brave-free" && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="brave-key" className="text-sm font-normal text-muted-foreground">
-                  Brave Search API Key
-                  {braveKeySet && <span className="ml-2 text-xs text-emerald-500">已配置</span>}
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="brave-key"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={braveKeySet ? "已配置（留空则不变）" : "输入 Brave API Key"}
-                    value={braveKeyInput}
-                    disabled={!loaded || savingKey}
-                    onChange={(e) => setBraveKeyInput(e.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    onClick={saveBraveKey}
-                    disabled={!loaded || savingKey || braveKeyInput.trim() === ""}
-                  >
-                    保存
-                  </Button>
-                </div>
-                {braveNeedsKey && (
-                  <p className="text-xs text-amber-500">
-                    已选择 Brave 但尚未配置 Key —— 在保存 Key 之前，搜索工具不会启用。
-                  </p>
-                )}
-                <p className="text-muted-foreground text-xs">
-                  免费版额度约 2,000 次/月。前往 https://brave.com/search/api/ 获取 Key。
-                </p>
-              </div>
-            )}
-
-            {webSearch && backend === "tavily" && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="tavily-key" className="text-sm font-normal text-muted-foreground">
-                  Tavily Search API Key
-                  {tavilyKeySet && <span className="ml-2 text-xs text-emerald-500">已配置</span>}
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="tavily-key"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={tavilyKeySet ? "已配置（留空则不变）" : "输入 Tavily API Key（tvly-…）"}
-                    value={tavilyKeyInput}
-                    disabled={!loaded || savingTavilyKey}
-                    onChange={(e) => setTavilyKeyInput(e.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    onClick={saveTavilyKey}
-                    disabled={!loaded || savingTavilyKey || tavilyKeyInput.trim() === ""}
-                  >
-                    保存
-                  </Button>
-                </div>
-                {webSearch && backend === "tavily" && !tavilyKeySet && (
-                  <p className="text-xs text-amber-500">
-                    已选择 Tavily 但尚未配置 Key —— 在保存 Key 之前，搜索工具不会启用。
-                  </p>
-                )}
-                <p className="text-muted-foreground text-xs">前往 https://tavily.com 注册并获取 API Key。</p>
-              </div>
-            )}
-
-            {webSearch && (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="ws-proxy" className="text-sm font-normal text-muted-foreground">
-                  出口代理（可选）
-                </Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="ws-proxy"
-                    autoComplete="off"
-                    placeholder="http://host:port 或 socks5://host:port（留空=直连）"
-                    value={proxyInput}
-                    disabled={!loaded || savingProxy}
-                    onChange={(e) => setProxyInput(e.target.value)}
-                  />
-                  <Button type="button" onClick={saveProxy} disabled={!loaded || savingProxy}>
-                    保存
-                  </Button>
-                </div>
-                <p className="text-muted-foreground text-xs">
-                  独立出口代理，仅用于访问搜索端点（VPN/SOCKS 等）。与记录流量的 MITM 代理无关；网络不通时经此代理访问。
-                </p>
-              </div>
-            )}
-
-            {webSearch && (
-              <div className="flex items-center justify-between gap-4 border-t pt-4">
-                <p className="text-muted-foreground text-xs">
-                  用当前配置（来源 + 代理 + Key）实际搜索一次「test」，验证是否可用。
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={runTest}
-                  disabled={!loaded || testing}
-                  className="shrink-0"
-                >
-                  {testing ? "测试中…" : "测试搜索"}
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <RadioTowerIcon className="size-4" />
-              自定义脚本 · Python 解释器
-            </CardTitle>
-            <CardDescription>
-              自定义 <b>script</b> 类型工具用它跑 Python。开机会自动检测（python3 优先）；此处可手填 venv /
-              特定版本的绝对路径，留空则运行时自动检测。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Input
-                className="font-mono text-sm"
-                placeholder="/usr/bin/python3（留空=自动检测）"
-                value={pyInterp}
-                disabled={!loaded || saving}
-                onChange={(e) => setPyInterp(e.target.value)}
-              />
-              <Button variant="outline" onClick={detectPython} disabled={!loaded || saving}>
-                重新检测
-              </Button>
-              <Button onClick={savePython} disabled={!loaded || saving}>
-                保存
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CpuIcon className="size-4" />
-              工作并发 · Work Agent 数
-            </CardTitle>
-            <CardDescription>
-              每个任务并发运行的工作 agent 数量（默认 3）。数值越大并发探测越多、消耗也越高。修改后
-              <b>对之后启动的任务生效</b>，正在运行的任务不受影响。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2 rounded-md border p-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm">多模型 Worker 池</Label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addWorkerPool}
-                  disabled={!loaded || !settingsLoaded || savingWorkers}
-                >
-                  添加模型池
-                </Button>
-              </div>
-              {workerPools.map((pool, index) => {
-                const selected = llmProfiles.find((profile) => profile.id === pool.profile_id);
-                const placeholder =
-                  selected?.name || (pool.profile_id ? `配置 #${pool.profile_id} 已删除/不可用` : "选择 LLM 配置");
-                return (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: pool rows are edited in place and only deleted.
-                  <div className="flex items-center gap-2" key={`${pool.profile_id}-${index}`}>
-                    <Select
-                      value={pool.profile_id || undefined}
-                      disabled={!settingsLoaded || savingWorkers}
-                      onValueChange={(value) =>
-                        setWorkerPools((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index ? { ...item, profile_id: value } : item,
-                          ),
-                        )
-                      }
-                    >
-                      <SelectTrigger className="min-w-0 flex-1">
-                        <SelectValue placeholder={placeholder} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {!selected && pool.profile_id ? (
-                          <SelectItem value={pool.profile_id}>配置 #{pool.profile_id} 已删除/不可用</SelectItem>
-                        ) : null}
-                        {llmProfiles.map((profile) => (
-                          <SelectItem key={profile.id} value={profile.id}>
-                            {profile.name} · {profile.model}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="brave-key">Brave API Key</Label>
                     <Input
-                      type="number"
-                      min={1}
-                      className="w-24 font-mono text-sm"
-                      value={pool.workers}
-                      disabled={!settingsLoaded || savingWorkers}
-                      onChange={(event) =>
-                        setWorkerPools((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index ? { ...item, workers: Number(event.target.value) } : item,
-                          ),
-                        )
-                      }
+                      id="brave-key"
+                      type="password"
+                      placeholder={settings?.brave_key_set ? "已配置，留空不修改" : "粘贴 Brave Key"}
+                      value={braveKey}
+                      onChange={(e) => setBraveKey(e.target.value)}
+                      disabled={!loaded}
                     />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={!settingsLoaded || savingWorkers}
-                      onClick={() => setWorkerPools((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                    >
-                      删除
-                    </Button>
                   </div>
-                );
-              })}
-              {workerPools.length > 0 ? (
-                <div className="text-muted-foreground text-sm">
-                  当前合计：{workerPools.reduce((sum, pool) => sum + (Number(pool.workers) || 0), 0)} 个 Worker 会话
+                  <Button variant="outline" onClick={() => void saveWebSearchKey("brave")} disabled={!loaded || saving}>
+                    保存
+                  </Button>
                 </div>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                className="w-32 font-mono text-sm"
-                placeholder="3"
-                value={workers}
-                disabled={!loaded || !settingsLoaded || savingWorkers || workerPools.length > 0}
-                onChange={(e) => setWorkers(e.target.value)}
-              />
-              {workerPools.length > 0 ? (
-                <span className="text-muted-foreground text-xs">已配置模型池时由各池数量决定并发。</span>
-              ) : null}
-              <Button onClick={saveWorkers} disabled={!loaded || !settingsLoaded || savingWorkers}>
-                保存
-              </Button>
-            </div>
-            {!settingsLoaded && loaded ? (
-              <p className="text-destructive text-xs">设置加载失败，Worker 配置已锁定；刷新成功后才能编辑或保存。</p>
-            ) : null}
-          </CardContent>
-        </Card>
+                <div className="flex items-end gap-2">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="tavily-key">Tavily API Key</Label>
+                    <Input
+                      id="tavily-key"
+                      type="password"
+                      placeholder={settings?.tavily_key_set ? "已配置，留空不修改" : "粘贴 Tavily Key"}
+                      value={tavilyKey}
+                      onChange={(e) => setTavilyKey(e.target.value)}
+                      disabled={!loaded}
+                    />
+                  </div>
+                  <Button variant="outline" onClick={() => void saveWebSearchKey("tavily")} disabled={!loaded || saving}>
+                    保存
+                  </Button>
+                </div>
+              </div>
 
-        <Card className="mb-4 break-inside-avoid md:mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <KeyboardIcon className="size-4" />
-              会话输入框发送键位
-            </CardTitle>
-            <CardDescription>
-              对话页与任务详情的主 Agent 会话输入框共用此设置，选择后立即生效、无需保存。
-              <br />
-              该偏好<b>只存在本浏览器</b>，不随账号同步，换浏览器或清理站点数据后需重新设置。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <Label htmlFor="chat-send-mode" className="text-sm font-normal text-muted-foreground">
-              发送方式
-            </Label>
-            <Select value={sendMode} onValueChange={(v) => setChatSendMode(v as ChatSendMode)}>
-              <SelectTrigger id="chat-send-mode" className="w-72">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CHAT_SEND_MODE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-      </div>
+              <div className="flex items-end gap-3">
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor="search-proxy">搜索代理（可选）</Label>
+                  <Input
+                    id="search-proxy"
+                    placeholder="http://host:port"
+                    value={searchProxy}
+                    onChange={(e) => setSearchProxy(e.target.value)}
+                    disabled={!loaded}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => void patch({ web_search_proxy: searchProxy.trim() })}
+                  disabled={!loaded || saving}
+                >
+                  保存
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="access" className="flex flex-col gap-4">
+          <BasicAuthCard />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">登录密码</CardTitle>
+              <CardDescription>
+                账号固定为 ARTEX（后端既有约定）。改密码在左下角用户菜单 → 修改密码。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-muted-foreground text-sm">
+              本机部署默认开启免登录（start.bat 的 ARTEX_NO_LOGIN=1）并只监听 127.0.0.1；对外提供服务前请关闭免登录并启用上面的访问控制。
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="maintenance" className="flex flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">记录与脚本</CardTitle>
+              <CardDescription>排查问题时可临时开启 LLM 录制；Python 解释器留空则自动探测。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <ToggleRow
+                id="llm-record"
+                title="LLM 调用录制"
+                checked={llmRecord}
+                disabled={!loaded || saving}
+                onChange={(v) => {
+                  setLlmRecord(v);
+                  void patch({ llm_record: v });
+                }}
+              />
+              <div className="flex items-end gap-3">
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Label htmlFor="python">Python 解释器</Label>
+                  <Input
+                    id="python"
+                    placeholder="留空自动探测"
+                    value={pyInterp}
+                    onChange={(e) => setPyInterp(e.target.value)}
+                    disabled={!loaded}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => void patch({ python_interpreter: pyInterp.trim() })}
+                  disabled={!loaded || saving}
+                >
+                  保存
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <UpdateCard />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">关于</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{APP_CONFIG.name}</span>
+                <Badge variant="secondary">{APP_CONFIG.latinName}</Badge>
+                <span className="text-muted-foreground">v{APP_CONFIG.version}</span>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                SRC 赏金挖掘工作台：平台库选目标 → 按收录标准挖洞 → 发现 → 台账记账。运行日志见
+                <Link className="mx-1 underline" href="/system/logs">
+                  日志页
+                </Link>
+                。
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function ToggleRow({
+  id,
+  title,
+  checked,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  title: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Label htmlFor={id} className="text-sm font-normal">
+        {title}
+      </Label>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} disabled={disabled} />
     </div>
   );
 }
