@@ -89,6 +89,7 @@ import type {
   BountySubmission,
   BountySummary,
   StandardReview,
+  EvidenceReview,
   SRCStandard,
   ScopeCandidate,
   SSProject,
@@ -524,6 +525,18 @@ export const api = {
     })),
   applyStandardReview: (taskId: string, ids: number[]) =>
     post<{ ok: boolean; ignored: number }>(`/tasks/${encodeURIComponent(taskId)}/standard-review/apply`, { ids }),
+  // 提交自检：按证据完整度把 finding 分为可提交 / 需补充；可批量确认或忽略。
+  evidenceReview: (taskId: string) =>
+    get<EvidenceReview>(`/tasks/${encodeURIComponent(taskId)}/evidence-review`).then((r) => ({
+      ...r,
+      weak: arr(r.weak),
+      ok: arr(r.ok),
+    })),
+  applyEvidenceReview: (taskId: string, ids: number[], action: "confirm" | "ignore") =>
+    post<{ ok: boolean; updated: number; status: string }>(
+      `/tasks/${encodeURIComponent(taskId)}/evidence-review/apply`,
+      { ids, action },
+    ),
   createBounty: (body: Partial<BountySubmission>) => post<BountySubmission>("/bounty/submissions", body),
   updateBounty: (id: number, body: Partial<BountySubmission>) =>
     patch<BountySubmission>(`/bounty/submissions/${id}`, body),

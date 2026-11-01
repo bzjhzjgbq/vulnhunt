@@ -991,6 +991,8 @@ export interface Settings {
   // 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
   task_concurrency_enabled?: boolean; // 默认 false
   task_concurrency_limit?: number; // 开启后默认 5
+  // 长跑收敛：任务连续 N 小时没有新增发现时自动暂停（0=关闭，默认 24）。
+  auto_pause_stale_hours?: number;
   // LLM 轮询(故障转移)。默认关；开启后「未指定模型」的 agent 在当前配置不可用
   // （余额不足/key 失效/限流/服务异常）时自动切到下一个配置。
   llm_pool_enabled?: boolean; // 默认 false
@@ -1975,6 +1977,34 @@ export interface StandardReview {
   total: number;
   keep: number;
   flagged: StandardReviewItem[];
+}
+
+// 提交自检（GET /api/tasks/{id}/evidence-review）：证据是否足以提交。
+export interface EvidenceCheck {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface EvidenceReviewFinding {
+  id: number;
+  name: string;
+  severity: string;
+  status: string;
+  score: number;
+  max: number;
+  ready: boolean;
+  checks: EvidenceCheck[];
+}
+
+export interface EvidenceReview {
+  task_id: string;
+  task_name: string;
+  total: number;
+  ready: number;
+  weak: EvidenceReviewFinding[];
+  ok: EvidenceReviewFinding[];
 }
 
 // Candidate scope entry extracted from a program's public page.

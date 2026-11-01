@@ -55,6 +55,7 @@ import type {
   FindingStatus,
   Severity,
   StandardReview,
+  EvidenceReview,
   Task,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -329,6 +330,58 @@ export default function FindingsPage() {
       toast.error(`忽略失败：${(e as Error).message}`);
     } finally {
       setStdApplying(false);
+    }
+  }
+
+  // 提交自检：确认证据是否足以提交；就绪的可批量确认，不完整的可批量忽略。
+  const [evOpen, setEvOpen] = React.useState(false);
+  const [evReview, setEvReview] = React.useState<EvidenceReview | null>(null);
+  const [evLoading, setEvLoading] = React.useState(false);
+  const [evApplying, setEvApplying] = React.useState(false);
+
+  async function openEvidenceReview() {
+    setEvOpen(true);
+    try {
+      if (stdTasks.length === 0) {
+        const resp = await api.tasks();
+        setStdTasks(resp.tasks);
+        if (!stdTaskId) setStdTaskId(resp.active || resp.tasks[0]?.id || "");
+      }
+    } catch (e) {
+      toast.error(`加载任务失败：${(e as Error).message}`);
+    }
+  }
+
+  async function runEvidenceReview() {
+    if (!stdTaskId) return;
+    setEvLoading(true);
+    setEvReview(null);
+    try {
+      setEvReview(await api.evidenceReview(stdTaskId));
+    } catch (e) {
+      toast.error(`自检失败：${(e as Error).message}`);
+    } finally {
+      setEvLoading(false);
+    }
+  }
+
+  async function applyEvidenceReview(action: "confirm" | "ignore") {
+    if (!stdTaskId || !evReview) return;
+    const ids =
+      action === "confirm"
+        ? evReview.ok.filter((f) => f.status === "pending").map((f) => f.id)
+        : evReview.weak.filter((f) => f.status === "pending").map((f) => f.id);
+    if (ids.length === 0) return;
+    setEvApplying(true);
+    try {
+      const resp = await api.applyEvidenceReview(stdTaskId, ids, action);
+      toast.success(action === "confirm" ? `已确认 ${resp.updated} 条` : `已忽略 ${resp.updated} 条证据不足的发现`);
+      setEvOpen(false);
+      setEvReview(null);
+    } catch (e) {
+      toast.error(`操作失败：${(e as Error).message}`);
+    } finally {
+      setEvApplying(false);
     }
   }
 
@@ -1081,6 +1134,9 @@ export default function FindingsPage() {
             <Button size="sm" variant="outline" onClick={() => void openStandardReview()}>
               <ClipboardCheckIcon /> 标准体检
             </Button>
+            <Button size="sm" variant="outline" onClick={() => void openEvidenceReview()}>
+              <ShieldAlertIcon /> 提交自检
+            </Button>
           </div>
         </div>
 
@@ -1531,6 +1587,94 @@ export default function FindingsPage() {
               disabled={stdApplying || stdSelected.size === 0}
             >
               {stdApplying ? <Spinner /> : null}忽略选中（{stdSelected.size}）
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={evOpen} onOpenChange={setEvOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>提交自检</DialogTitle>
+            <DialogDescription>
+              在推进到「已确认 → 提交台账」之前，检查证据是否足以支撑一条可提交的报告：标题、描述、原始请求/响应、报告结构与等级。
+              全部通过才视为可提交；不完整的建议忽略或退回补充。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-1">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-64 flex-1 flex-col gap-1.5">
+                <span className="text-xs font-medium">任务</span>
+                <NativeSelect value={stdTaskId} onChange={(e) => setStdTaskId(e.target.value)}>
+                  <NativeSelectOption value="">选择任务</NativeSelectOption>
+                  {stdTasks.map((t) => (
+                    <NativeSelectOption key={t.id} value={t.id}>
+                      #{t.id} · {t.name?.trim() || (t.description || "").slice(0, 40) || "未命名"}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+              <Button onClick={() => void runEvidenceReview()} disabled={!stdTaskId || evLoading}>
+                {evLoading ? <Spinner /> : <ShieldAlertIcon />} 开始自检
+              </Button>
+            </div>
+
+            {evReview ? (
+              <>
+                <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span>待处理/已确认 {evReview.total}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">可提交 {evReview.ready}</span>
+                  <span className="text-amber-600 dark:text-amber-400">需补充 {evReview.weak.length}</span>
+                </div>
+
+                {evReview.weak.length > 0 ? (
+                  <div className="max-h-64 overflow-auto rounded-md border">
+                    {evReview.weak.map((f) => (
+                      <div key={f.id} className="flex flex-col gap-1 border-b px-3 py-2 last:border-b-0">
+                        <span className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-medium">{f.name}</span>
+                          <span className="text-muted-foreground uppercase">{f.severity || "unknown"}</span>
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {f.score}/{f.max}
+                          </span>
+                          <span className="text-muted-foreground">{f.status === "confirmed" ? "已确认" : "待处理"}</span>
+                        </span>
+                        <span className="text-muted-foreground text-xs">
+                          缺少：{f.checks.filter((c) => !c.ok).map((c) => c.label).join("、")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs">
+                    没有需要补充的发现。
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs">
+                选择任务后点「开始自检」。自检只读；确认/忽略需要你点底部按钮。
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEvOpen(false)} disabled={evApplying}>
+              关闭
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void applyEvidenceReview("ignore")}
+              disabled={evApplying || !evReview || evReview.weak.filter((f) => f.status === "pending").length === 0}
+            >
+              忽略不完整（{evReview ? evReview.weak.filter((f) => f.status === "pending").length : 0}）
+            </Button>
+            <Button
+              onClick={() => void applyEvidenceReview("confirm")}
+              disabled={evApplying || !evReview || evReview.ok.filter((f) => f.status === "pending").length === 0}
+            >
+              确认就绪（{evReview ? evReview.ok.filter((f) => f.status === "pending").length : 0}）
             </Button>
           </DialogFooter>
         </DialogContent>
