@@ -1,4 +1,4 @@
-# ARTEX 开机自举：按依赖顺序拉起 Docker Desktop -> artex-pg -> artex.exe 守护。
+﻿# ARTEX 开机自举：按依赖顺序拉起 Docker Desktop -> artex-pg -> artex.exe 守护。
 #
 # 为什么需要它：手工启动链有三层依赖（Docker 守护 -> Postgres 容器 -> 后端），
 # 顺序错了就会出现「artex 起来了但连不上库」；而且从别的会话里 Start-Process
