@@ -308,7 +308,9 @@ func (s *Server) restoreTaskRuntimes() {
 	// FIFO. Paused loops remain idle; queued tasks are admitted below as slots allow.
 	for _, t := range m.List() {
 		lifecycle := t.lifecycleSnapshot()
-		if !lifecycle.Queued && !isTerminalStatus(lifecycle.Status) {
+		// Never re-admit a paused task: admission clears paused in the database,
+		// so a restart used to silently resume user-paused and auto-paused tasks.
+		if !lifecycle.Queued && !lifecycle.Paused && !isTerminalStatus(lifecycle.Status) {
 			s.engine.Run(s.ctx, t)
 		}
 	}

@@ -28,6 +28,15 @@ function Stop-VulnHunt {
     Log "stopping watcher cmd pid=$($w.ProcessId)"
     & taskkill /PID $w.ProcessId /T /F 2>&1 | Out-Null
   }
+  # The Boot Stack task starts at logon and its wscript/powershell child keeps
+  # D:\VulnHunt as its working directory. Disabling the task does not stop an
+  # instance that is already running, so kill those process trees too.
+  $boots = Get-CimInstance Win32_Process |
+    Where-Object { $_.CommandLine -match 'boot-stack\.ps1|run-hidden\.vbs' }
+  foreach ($b in $boots) {
+    Log "stopping boot-stack pid=$($b.ProcessId) $($b.Name)"
+    & taskkill /PID $b.ProcessId /T /F 2>&1 | Out-Null
+  }
   Get-Process vulnhunt -ErrorAction SilentlyContinue | Stop-Process -Force
   for ($i = 0; $i -lt 10; $i++) {
     if (-not (Get-Process vulnhunt -ErrorAction SilentlyContinue)) { break }
