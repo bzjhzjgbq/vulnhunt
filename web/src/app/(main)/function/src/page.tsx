@@ -52,6 +52,25 @@ export default function SRCProgramsPage() {
   const [stdProgram, setStdProgram] = React.useState<SRCProgram | null>(null);
   const [stdDetail, setStdDetail] = React.useState<SRCStandard | null>(null);
   const [stdLoading, setStdLoading] = React.useState(false);
+  // 已停止运营的平台默认隐藏，避免在“还活着的平台”里混入死站。
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [archiveTarget, setArchiveTarget] = React.useState<SRCProgram | null>(null);
+  const [archiveReason, setArchiveReason] = React.useState("");
+  const [archiving, setArchiving] = React.useState(false);
+
+  async function toggleArchived(p: SRCProgram, archived: boolean, reason = "") {
+    setArchiving(true);
+    try {
+      await api.srcArchiveProgram(p.id, { archived, reason });
+      toast.success(archived ? "已标记为下线" : "已恢复上线");
+      setArchiveTarget(null);
+      await load();
+    } catch (e) {
+      toast.error(`操作失败：${(e as Error).message}`);
+    } finally {
+      setArchiving(false);
+    }
+  }
 
   async function openStandard(p: SRCProgram) {
     setStdProgram(p);
@@ -88,14 +107,14 @@ export default function SRCProgramsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const resp = await api.srcPrograms({ q: appliedQ, region });
+      const resp = await api.srcPrograms({ q: appliedQ, region, includeArchived: showArchived });
       setPrograms(resp.programs);
     } catch (e) {
       toast.error(`加载 SRC 目录失败：${(e as Error).message}`);
     } finally {
       setLoading(false);
     }
-  }, [appliedQ, region]);
+  }, [appliedQ, region, showArchived]);
 
   React.useEffect(() => {
     void load();
@@ -184,6 +203,10 @@ export default function SRCProgramsPage() {
           <NativeSelectOption value="国内">国内</NativeSelectOption>
           <NativeSelectOption value="国外">国外</NativeSelectOption>
         </NativeSelect>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={showArchived} onCheckedChange={(v) => setShowArchived(v === true)} />
+          显示已下线
+        </label>
       </div>
 
       <Card>
@@ -204,11 +227,16 @@ export default function SRCProgramsPage() {
                       <Badge variant="outline" className="text-[10px]">
                         {REGION_LABEL[p.region] ?? p.region}
                       </Badge>
-                      {p.status !== "normal" && (
+                      {p.archived || p.status === "offline" || p.status === "closed" ? (
+                        <Badge variant="destructive" className="text-[10px]">
+                          已下线
+                          {p.archived_reason ? ` · ${p.archived_reason}` : ""}
+                        </Badge>
+                      ) : p.status !== "normal" ? (
                         <Badge variant="secondary" className="text-[10px]">
                           {p.status_label}
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
                     <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
                       {p.target_url ? (
@@ -260,10 +288,28 @@ export default function SRCProgramsPage() {
                     <ScrollTextIcon className="size-4" />
                     标准
                   </Button>
-                  <Button size="sm" onClick={() => openLaunch(p)}>
-                    <RocketIcon className="size-4" />
-                    开测
-                  </Button>
+                  {p.archived || p.status === "offline" || p.status === "closed" ? (
+                    <Button size="sm" variant="outline" onClick={() => void toggleArchived(p, false)}>
+                      恢复上线
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setArchiveTarget(p);
+                          setArchiveReason("");
+                        }}
+                      >
+                        下线
+                      </Button>
+                      <Button size="sm" onClick={() => openLaunch(p)}>
+                        <RocketIcon className="size-4" />
+                        开测
+                      </Button>
+                    </>
+                  )}
                 </div>
               ))
             )}
@@ -408,6 +454,37 @@ export default function SRCProgramsPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setStdProgram(null)}>
               关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!archiveTarget} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>标记下线 · {archiveTarget?.name}</DialogTitle>
+            <DialogDescription>
+              下线后默认列表不再展示，也不能开测；历史任务与漏洞仍保留，可在「显示已下线」里恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2 py-1">
+            <span className="text-xs font-medium">下线原因（可选）</span>
+            <Input
+              value={archiveReason}
+              onChange={(e) => setArchiveReason(e.target.value)}
+              placeholder="如：平台已停止运营 / 站点 502"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setArchiveTarget(null)} disabled={archiving}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => archiveTarget && void toggleArchived(archiveTarget, true, archiveReason)}
+              disabled={archiving}
+            >
+              确认下线
             </Button>
           </DialogFooter>
         </DialogContent>

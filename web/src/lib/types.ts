@@ -1912,6 +1912,8 @@ export interface SRCProgram {
   linked_task_id?: number;
   linked_task_status?: string;
   linked_task_findings?: number;
+  archived?: boolean;
+  archived_reason?: string;
 }
 
 // Bounty ledger (GET /api/bounty/submissions) — one platform submission per row.
@@ -1985,3 +1987,5 @@ export interface AssetProject {
   total: number;
   counts: Record<string, number>;
 }
+
+// 平台下线标记：archived=true 时默认列表不展示，且不能开测。

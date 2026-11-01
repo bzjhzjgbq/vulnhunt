@@ -28,16 +28,45 @@ const srcCatalogBodyLimit = 8 << 20 // 8 MiB
 func (s *Server) srcPrograms(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	programs, err := s.m.pg.ListSRCPrograms(r.Context(), db.SRCProgramFilter{
-		Query:  q.Get("q"),
-		Tag:    q.Get("tag"),
-		Status: q.Get("status"),
-		Region: q.Get("region"),
+		Query:           q.Get("q"),
+		Tag:             q.Get("tag"),
+		Status:          q.Get("status"),
+		Region:          q.Get("region"),
+		IncludeArchived: q.Get("include_archived") == "1",
 	})
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
 	writeJSON(w, 200, map[string]any{"programs": programs, "total": len(programs)})
+}
+
+// srcProgramArchive marks a platform as retired (or restores it). Retired rows are
+// hidden from the default list and cannot be launched.
+func (s *Server) srcProgramArchive(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeErr(w, 400, "bad program id")
+		return
+	}
+	var body struct {
+		Archived bool   `json:"archived"`
+		Reason   string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, 400, "bad json: "+err.Error())
+		return
+	}
+	ok, err := s.m.pg.SetSRCProgramArchived(r.Context(), id, body.Archived, body.Reason)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	if !ok {
+		writeErr(w, 404, "program not found")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "archived": body.Archived})
 }
 
 // srcCatalogSync pulls the public catalog and upserts it. Failures are reported,
@@ -113,6 +142,10 @@ func (s *Server) srcProgramLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 	if program == nil {
 		writeErr(w, 404, "program not found")
+		return
+	}
+	if program.Archived || program.Status == "offline" || program.Status == "closed" {
+		writeErr(w, 400, "该项目已停止运营（已下线），不能开测；如确认恢复请在平台库中取消下线标记")
 		return
 	}
 

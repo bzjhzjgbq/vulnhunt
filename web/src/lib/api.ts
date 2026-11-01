@@ -459,17 +459,26 @@ export const api = {
   // 全局 llm_usage 聚合（仪表盘新版 token 视图）：按 profile 总量 + 按天分桶。
   usageStats: (days = 365) => get<UsageStats>(`/tokens/usage?days=${days}`),
   // ---- SRC 赏金目录（h0day 公共索引）----
-  srcPrograms: (params?: { q?: string; tag?: string; status?: string; region?: string }) => {
+  srcPrograms: (params?: {
+    q?: string;
+    tag?: string;
+    status?: string;
+    region?: string;
+    includeArchived?: boolean;
+  }) => {
     const p = new URLSearchParams();
     if (params?.q) p.set("q", params.q);
     if (params?.tag) p.set("tag", params.tag);
     if (params?.status) p.set("status", params.status);
     if (params?.region) p.set("region", params.region);
+    if (params?.includeArchived) p.set("include_archived", "1");
     const qs = p.toString();
     return get<{ programs: SRCProgram[] | null; total: number }>(`/src/programs${qs ? `?${qs}` : ""}`).then(
       (r) => ({ programs: arr(r.programs), total: r.total }),
     );
   },
+  srcArchiveProgram: (id: number, body: { archived: boolean; reason?: string }) =>
+    patch<{ ok: boolean; archived: boolean }>(`/src/programs/${id}`, body),
   srcSync: () =>
     post<{ ok: boolean; source: string; result: { fetched: number; inserted: number; updated: number } }>(
       "/src/sync",
