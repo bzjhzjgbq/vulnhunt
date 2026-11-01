@@ -41,11 +41,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <Link prefetch={false} href="/workbench">
+            <SidebarMenuButton asChild size="lg" tooltip={APP_CONFIG.name}>
+              <Link prefetch={false} href="/workbench" className="gap-2.5">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-mark.svg" alt={APP_CONFIG.name} width={36} height={36} className="shrink-0" />
-                <span className="flex min-w-0 flex-col leading-tight">
+                <img
+                  src="/brand-mark.svg"
+                  alt={APP_CONFIG.name}
+                  width={32}
+                  height={32}
+                  className="size-8 shrink-0 rounded-lg"
+                />
+                <span className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
                   <span className="text-base font-semibold">{APP_CONFIG.name}</span>
                   <span className="text-muted-foreground text-[10px] font-medium tracking-[0.18em] uppercase">
                     {APP_CONFIG.latinName}
