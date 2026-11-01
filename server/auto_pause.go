@@ -63,14 +63,32 @@ func (s *Server) pauseStaleTasks(ctx context.Context, hours int) {
 			`SELECT max(created_at) FROM findings WHERE task_id = $1`, tid).Scan(&last); err != nil {
 			continue
 		}
-		if !last.Valid || last.Time.IsZero() || last.Time.After(cutoff) {
-			continue
+		reason := ""
+		var lastAt time.Time
+		if last.Valid && !last.Time.IsZero() {
+			if last.Time.After(cutoff) {
+				continue
+			}
+			reason = "no new finding"
+			lastAt = last.Time
+		} else {
+			// A task that never produced a finding is the most expensive kind of
+			// idle run: fall back to its creation time so it cannot burn forever.
+			if task.CreatedAt <= 0 {
+				continue
+			}
+			created := time.Unix(task.CreatedAt, 0)
+			if created.After(cutoff) {
+				continue
+			}
+			reason = "no finding since creation"
+			lastAt = created
 		}
 		if err := s.m.SetTaskPaused(task.ID, true); err != nil {
 			log.Printf("[auto-pause] task %s pause failed: %v", task.ID, err)
 			continue
 		}
-		log.Printf("[auto-pause] task %s (%s) paused: no new finding for %dh (last %s)",
-			task.ID, task.Name, hours, last.Time.Format("2006-01-02 15:04"))
+		log.Printf("[auto-pause] task %s (%s) paused: %s for %dh (since %s)",
+			task.ID, task.Name, reason, hours, lastAt.Format("2006-01-02 15:04"))
 	}
 }

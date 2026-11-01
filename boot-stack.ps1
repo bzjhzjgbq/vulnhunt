@@ -14,7 +14,7 @@ $log  = Join-Path $root 'data\boot-stack.log'
 # LLM 调用记录保留天数。每条记录含完整提示词与原始响应（实测均 223KB），
 # 实测增速约 1359 条/小时 ≈ 7.3GB/天，而引擎自身没有任何自动清理 ——
 # 无限增长最终会填满磁盘。这里由看门狗顺带按天裁剪。
-$llmRecordKeepDays = 7
+$llmRecordKeepDays = 1
 
 function Log([string]$m) {
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [boot] $m" | Add-Content -Path $log -Encoding UTF8
