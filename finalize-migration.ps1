@@ -59,7 +59,7 @@ try {
   $holders = Get-Process -ErrorAction SilentlyContinue |
     Where-Object { $_.Path -and $_.Path.StartsWith($real, [System.StringComparison]::OrdinalIgnoreCase) } |
     Select-Object -Unique Id, ProcessName, Path
-  foreach ($h in $holders) { Log "process using $real: pid=$($h.Id) $($h.ProcessName) $($h.Path)" }
+  foreach ($h in $holders) { Log "process using ${real}: pid=$($h.Id) $($h.ProcessName) $($h.Path)" }
 
   Stop-VulnHunt
 
