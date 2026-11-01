@@ -4,6 +4,8 @@
 
 **SRC 赏金挖掘工作台** — 选目标、按平台收录标准挖洞、提交自检、台账记账。
 
+[English](README.en.md) | 简体中文
+
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
@@ -38,6 +40,12 @@ SRC 挖洞的痛点通常不是「找不到漏洞」，而是：
 - **资产按 SRC 项目分组**：一个任务对应一个项目，资产不再混在一起。
 - **长跑收敛**：任务连续 N 小时没有新增发现时自动暂停，避免空烧模型额度。
 - **工作台**：在测目标、待提交、待处理、平台机会、最近到账一屏看完。
+
+## 演示
+
+![VulnHunt 演示](screenshots/vulnhunt/demo.gif)
+
+工作台 → SRC 平台库 → 收录标准 → 赏金台账 → 系统设置（演示图中漏洞标题已脱敏）。
 
 ## 界面
 
