@@ -19,6 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Autumn-27/norma/llm"
+	actool "github.com/Autumn-27/norma/tool"
+	"github.com/Autumn-27/norma/transcript"
 	"vulnhunt/agent"
 	"vulnhunt/db"
 	"vulnhunt/intercept"
@@ -26,9 +29,6 @@ import (
 	"vulnhunt/llmrec"
 	"vulnhunt/report"
 	"vulnhunt/traffic"
-	"github.com/Autumn-27/norma/llm"
-	actool "github.com/Autumn-27/norma/tool"
-	"github.com/Autumn-27/norma/transcript"
 )
 
 // BuildVersion is the backend application version, injected from cmd/vulnhunt at
@@ -269,6 +269,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	}
 	s.restoreTaskRuntimes()
 	go s.reconcileConcurrency()
+	go s.autoPauseLoop(s.ctx)
 	s.startTaskArchiveWorker()
 	if m.pg != nil {
 		s.seedCredentialProcessor()
@@ -744,6 +745,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tasks/{id}/digest", s.taskDigest)
 	mux.HandleFunc("GET /api/tasks/{id}/standard-review", s.taskStandardReview)
 	mux.HandleFunc("POST /api/tasks/{id}/standard-review/apply", s.taskStandardReviewApply)
+	mux.HandleFunc("GET /api/tasks/{id}/evidence-review", s.taskEvidenceReview)
+	mux.HandleFunc("POST /api/tasks/{id}/evidence-review/apply", s.taskEvidenceReviewApply)
 	// SRC bounty catalog (h0day public index): browse → launch a scoped task.
 	mux.HandleFunc("GET /api/src/programs", s.srcPrograms)
 	mux.HandleFunc("PATCH /api/src/programs/{id}", s.srcProgramArchive)
@@ -3507,6 +3510,7 @@ func (s *Server) settingsPayload() map[string]any {
 		"worker_pools":              s.m.WorkerPools(),           // 非空时按池顺序绑定 worker 会话
 		"task_concurrency_enabled":  concOn,                      // 任务并发上限开关(默认关)
 		"task_concurrency_limit":    concLimit,                   // 同时运行任务上限(开启后默认5)
+		"auto_pause_stale_hours":    autoPauseStaleHours(s.m.pg), // 长跑任务 N 小时无新增自动暂停(0=关)
 		// LLM 轮询(故障转移)。默认关；开启后走全局激活配置的 agent 在当前配置不可用时
 		// 自动切到下一个配置。bind_fallback 仅在轮询开启时有意义(默认关)。
 		"llm_pool_enabled":       s.m.LLMPoolEnabled(),
@@ -3584,6 +3588,8 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		// 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
 		ConcurrencyEnabled *bool `json:"task_concurrency_enabled"`
 		ConcurrencyLimit   *int  `json:"task_concurrency_limit"`
+		// 长跑收敛:任务连续 N 小时没有新增发现时自动暂停(0=关闭,默认24)。
+		AutoPauseHours *int `json:"auto_pause_stale_hours"`
 		// LLM 轮询(故障转移)开关 + 「绑定配置失败也兜底回轮询链」开关。两者都需要
 		// 重建 provider 链才生效，走下面的 changed → applyLLM 路径。
 		LLMPoolEnabled      *bool `json:"llm_pool_enabled"`
@@ -3699,6 +3705,17 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		// 立即协调一次:关闭时放行全部排队,调高上限时补位启动,不必等下一个 tick。
 		go s.reconcileConcurrency()
+	}
+	if req.AutoPauseHours != nil {
+		n := *req.AutoPauseHours
+		if n < 0 || n > 720 {
+			writeErr(w, 400, "auto_pause_stale_hours must be 0-720 (0=off)")
+			return
+		}
+		if err := s.m.pg.SetSetting(settingAutoPauseHours, strconv.Itoa(n)); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
 	}
 	if req.PythonInterp != nil {
 		if err := s.m.pg.SetSetting(settingPythonInterp, strings.TrimSpace(*req.PythonInterp)); err != nil {

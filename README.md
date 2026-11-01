@@ -4,7 +4,7 @@
 
 SRC 赏金挖掘工作台（Go 后端 + Next.js 前端）：按各平台收录标准选目标、自动挖洞、提交并记账。
 
-> 由 ARTEX 改造而来；内部二进制/数据库/环境变量仍沿用 `artex` 命名以保持兼容。
+> 由 ARTEX 改造而来；二进制 `vulnhunt.exe`、数据库 `vulnhunt`、环境变量 `VULNHUNT_*`、Go 模块 `vulnhunt` 均已整体迁移。
 
 
 🌐 **上游项目**：[RuoJi6/ARTEX](https://github.com/RuoJi6/ARTEX)（猎洞在其基础上按 SRC 赏金场景重构）

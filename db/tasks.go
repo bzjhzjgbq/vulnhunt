@@ -582,10 +582,13 @@ UPDATE tasks
 	return deadline, err
 }
 
-// DeleteTask preserves the historical behavior: remove the task and its
-// exploration subgraph while retaining global assets.
+// DeleteTask removes the task, its exploration subgraph and its findings, while
+// retaining global assets. Findings must go with the task: the FK is SET NULL,
+// so keeping them would leave unattributable rows that pollute stats and cannot
+// be reviewed, submitted or traced. Callers that really need to preserve findings
+// should archive them first (task archives) instead of deleting the task.
 func (d *DB) DeleteTask(id int64) error {
-	_, err := d.DeleteTaskCascade(id, false, false)
+	_, err := d.DeleteTaskCascade(id, false, true)
 	return err
 }
 

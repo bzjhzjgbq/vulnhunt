@@ -2047,7 +2047,8 @@ const emptyDeleteOptions = (): DeleteTaskOptions => ({
   delete_assets: false,
   delete_traffic: false,
   delete_files: false,
-  delete_findings: false,
+  // 发现随任务一起删除：保留会变成无归属的孤儿（task_id 置空），既不能体检也不能提交。
+  delete_findings: true,
   delete_llm_records: false,
 });
 

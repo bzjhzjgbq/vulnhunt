@@ -20,7 +20,6 @@ import { api } from "@/lib/api";
 import type { Settings } from "@/lib/types";
 
 import { BasicAuthCard } from "./_components/basic-auth-card";
-import { UpdateCard } from "./_components/update-card";
 
 // 系统设置：只保留赏金挖掘真正会用到的四组配置。
 // 旧版的凭据提取/情报/流量捕获/实验压缩/聊天发送模式等入口已随对应产品面下线。
@@ -34,6 +33,7 @@ export default function SystemSettingsPage() {
   const [workers, setWorkers] = React.useState("3");
   const [concEnabled, setConcEnabled] = React.useState(false);
   const [concLimit, setConcLimit] = React.useState("5");
+  const [autoPause, setAutoPause] = React.useState("24");
   const [injectPlanner, setInjectPlanner] = React.useState(true);
   const [injectWorker, setInjectWorker] = React.useState(true);
 
@@ -54,6 +54,7 @@ export default function SystemSettingsPage() {
     setWorkers(String(s.workers ?? 3));
     setConcEnabled(!!s.task_concurrency_enabled);
     setConcLimit(String(s.task_concurrency_limit ?? 5));
+    setAutoPause(String(s.auto_pause_stale_hours ?? 24));
     setInjectPlanner(s.constraints_inject_planner !== false);
     setInjectWorker(s.constraints_inject_worker !== false);
     setGlobalProxy(s.global_proxy ?? "");
@@ -209,6 +210,36 @@ export default function SystemSettingsPage() {
                 >
                   应用上限
                 </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+                <div className="flex w-32 flex-col gap-1.5">
+                  <Label htmlFor="auto-pause">无新增自动暂停</Label>
+                  <Input
+                    id="auto-pause"
+                    type="number"
+                    min={0}
+                    max={720}
+                    value={autoPause}
+                    onChange={(e) => setAutoPause(e.target.value)}
+                    disabled={!loaded}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const n = Number(autoPause);
+                    if (!Number.isInteger(n) || n < 0 || n > 720) {
+                      toast.error("自动暂停小时数必须是 0-720 的整数（0=关闭）");
+                      return;
+                    }
+                    void patch({ auto_pause_stale_hours: n }, n === 0 ? "已关闭自动暂停" : `已设置 ${n} 小时`);
+                  }}
+                  disabled={!loaded || saving}
+                >
+                  保存
+                </Button>
+                <span className="text-muted-foreground text-xs">任务连续 N 小时没有新增发现时自动暂停，0=关闭</span>
               </div>
             </CardContent>
           </Card>
@@ -439,7 +470,17 @@ export default function SystemSettingsPage() {
             </CardContent>
           </Card>
 
-          <UpdateCard />
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">版本与更新</CardTitle>
+              <CardDescription>
+                当前为本地构建版本 v{APP_CONFIG.version}，不提供在线更新；升级时替换 vulnhunt.exe 后重启即可（旧版本会保留为备份）。
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-muted-foreground text-sm">
+              二进制：<span className="font-mono">vulnhunt.exe</span> · 服务：vulnhunt · 数据库：vulnhunt
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
