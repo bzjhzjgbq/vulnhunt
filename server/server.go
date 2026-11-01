@@ -747,6 +747,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/src/sync", s.srcCatalogSync)
 	mux.HandleFunc("POST /api/src/programs/{id}/launch", s.srcProgramLaunch)
 	mux.HandleFunc("POST /api/src/programs/{id}/scope-candidates", s.srcProgramScopeCandidates)
+	// SRC 收录标准库：平台口径 + 项目覆盖，开测时自动注入目标与约束。
+	mux.HandleFunc("GET /api/src/standards", s.srcStandards)
+	mux.HandleFunc("GET /api/src/standards/program/{id}", s.srcProgramStandard)
 	// Bounty ledger: per-platform submissions and the aggregate view.
 	mux.HandleFunc("GET /api/bounty/submissions", s.bountySubmissions)
 	mux.HandleFunc("POST /api/bounty/submissions", s.bountyCreate)

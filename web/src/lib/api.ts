@@ -87,6 +87,7 @@ import type {
   SRCProgram,
   BountySubmission,
   BountySummary,
+  SRCStandard,
   ScopeCandidate,
   SSProject,
   SSTask,
@@ -483,6 +484,12 @@ export const api = {
       `/src/programs/${id}/scope-candidates`,
       {},
     ),
+  srcStandards: () =>
+    get<{ version: number; updated_at: string; platforms: SRCStandard[]; programs: SRCStandard[] }>(
+      "/src/standards",
+    ),
+  srcProgramStandard: (id: number) =>
+    get<{ program_id: number; program: string; standard: SRCStandard }>(`/src/standards/program/${id}`),
 
   // ---- 赏金台账 ----
   bountySubmissions: (params?: { finding_id?: number; program_id?: number; status?: string }) => {

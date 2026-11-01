@@ -121,11 +121,12 @@ func (s *Server) srcProgramLaunch(w http.ResponseWriter, r *http.Request) {
 		name = program.Name
 	}
 	scopeText := strings.Join(scopes, "、")
-	desc := fmt.Sprintf("%s\n项目主页：%s\n标签：%s\n热度：%d\n来源：SRC 平台库（h0day 目录）",
-		program.Name, program.TargetURL, strings.Join(program.Tags, "、"), program.Heat)
-	goal := fmt.Sprintf("在「%s」的授权收录范围内做 SRC 漏洞挖掘，产出可直接提交的中/高危漏洞报告。"+
-		"用户声明的测试范围：%s。只测上述范围；每条 finding 必须给出可复现请求与原样响应片段；"+
-		"按该 SRC 的评级口径组织报告。", program.Name, scopeText)
+	std := resolveSRCStandard(program)
+	desc := fmt.Sprintf("%s\n项目主页：%s\n标签：%s\n热度：%d\n来源：SRC 平台库（h0day 目录）\n收录标准：%s（%s）",
+		program.Name, program.TargetURL, strings.Join(program.Tags, "、"), program.Heat, std.Name, std.Confidence)
+	goal := fmt.Sprintf("在「%s」的授权收录范围内做 SRC 漏洞挖掘，产出可直接提交、符合平台收录标准的中/高危漏洞报告。"+
+		"用户声明的测试范围：%s。只测上述范围；每条 finding 必须给出可复现请求与原样响应片段。\n\n%s",
+		program.Name, scopeText, std.promptText())
 
 	t, err := s.m.CreateTaskWithOptions(desc, goal, db.TaskCreateOptions{Name: name})
 	if err != nil {
@@ -151,8 +152,20 @@ func (s *Server) srcProgramLaunch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// 把标准落成任务约束，规划者/Worker 每轮都会看到，避免挖到一半跑偏。
+	if min := std.MinSeverity; min != "" {
+		_, _ = t.Store.AddConstraint("deny", "只产出 "+min+" 及以上等级的漏洞；无法证明真实影响的方向直接跳过，不要凑 finding。", "policy")
+	}
+	if len(std.Rejects) > 0 {
+		limit := len(std.Rejects)
+		if limit > 8 {
+			limit = 8
+		}
+		_, _ = t.Store.AddConstraint("deny", "平台不收、禁止产出与测试的类型："+strings.Join(std.Rejects[:limit], "；"), "policy")
+	}
 	s.launchTask(t, desc+" "+goal, false)
-	writeJSON(w, 201, map[string]any{"ok": true, "task_id": t.ID, "program_id": program.ID, "scopes": scopes})
+	writeJSON(w, 201, map[string]any{"ok": true, "task_id": t.ID, "program_id": program.ID, "scopes": scopes,
+		"standard": std.ID, "confidence": std.Confidence})
 }
 
 // normalizeSRCScopes trims, de-duplicates and strips URL/wildcard decoration so
