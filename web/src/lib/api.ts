@@ -16,6 +16,7 @@ import type {
   Asset,
   AssetInterceptRule,
   AssetInterceptRuleInput,
+  AssetProject,
   Audit,
   BatchCategoryItem,
   BatchControlItem,
@@ -606,16 +607,18 @@ export const api = {
 
   // ---- assets ----
   // Server-side paginated: pass limit/offset, get back the page + full match total.
-  assets: (type = "", limit = 50, offset = 0) =>
-    get<{ count: number; total: number; assets: Asset[] }>(`/assets?type=${type}&limit=${limit}&offset=${offset}`).then(
-      (r) => ({ assets: r?.assets ?? [], total: r?.total ?? r?.count ?? 0 }),
-    ),
-  searchAssets: (dsl: string, type = "", limit = 50, offset = 0) =>
+  // taskId scopes the fleet to one SRC project (task == project run).
+  assets: (type = "", limit = 50, offset = 0, taskId = "") =>
     get<{ count: number; total: number; assets: Asset[] }>(
-      `/assets?dsl=${encodeURIComponent(dsl)}${type ? `&type=${encodeURIComponent(type)}` : ""}&limit=${limit}&offset=${offset}`,
+      `/assets?type=${type}&limit=${limit}&offset=${offset}${taskId ? `&task_id=${encodeURIComponent(taskId)}` : ""}`,
+    ).then((r) => ({ assets: r?.assets ?? [], total: r?.total ?? r?.count ?? 0 })),
+  searchAssets: (dsl: string, type = "", limit = 50, offset = 0, taskId = "") =>
+    get<{ count: number; total: number; assets: Asset[] }>(
+      `/assets?dsl=${encodeURIComponent(dsl)}${type ? `&type=${encodeURIComponent(type)}` : ""}&limit=${limit}&offset=${offset}${taskId ? `&task_id=${encodeURIComponent(taskId)}` : ""}`,
     ).then((r) => ({ assets: r?.assets ?? [], total: r?.total ?? r?.count ?? 0 })),
   assetCounts: (taskId = "") =>
     get<Record<string, number>>(`/assets/counts${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ""}`),
+  assetProjects: () => get<{ projects: AssetProject[] | null }>("/assets/projects").then((r) => arr(r.projects)),
   deleteAssets: (ids: number[]) =>
     http<{ deleted: number }>("/assets", { method: "DELETE", body: JSON.stringify({ ids }) }),
   // task-scoped view of the same endpoint — server-side paginated like `assets`

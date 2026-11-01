@@ -63,7 +63,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api";
 import { parseCompanyScopeText } from "@/lib/company-scope";
-import type { Asset, Company, CompanyScopeRule } from "@/lib/types";
+import type { Asset, AssetProject, Company, CompanyScopeRule } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const METHOD_COLOR: Record<string, string> = {
@@ -86,6 +86,16 @@ function MethodBadge({ method }: { method: string }) {
       )}
     >
       {m || "—"}
+    </span>
+  );
+}
+
+
+function ProjectChip({ label }: { label: string }) {
+  if (!label) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className="bg-muted inline-block max-w-[160px] truncate rounded px-1.5 py-0.5 text-[10px] align-middle">
+      {label}
     </span>
   );
 }
@@ -156,6 +166,24 @@ function AssetsContent() {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const assetsRequestRef = React.useRef(0);
   const [rowsTab, setRowsTab] = React.useState("");
+  // SRC 项目（任务）维度：选中后整个页面只显示该项目资产。
+  const [projects, setProjects] = React.useState<AssetProject[]>([]);
+  const [projectTask, setProjectTask] = React.useState<string>("");
+  const projectByTask = React.useMemo(() => {
+    const m = new Map<string, AssetProject>();
+    for (const p of projects) m.set(p.task_id, p);
+    return m;
+  }, [projects]);
+  const projectLabelFor = React.useCallback(
+    (a: Asset) => {
+      for (const id of a.task_ids ?? []) {
+        const p = projectByTask.get(String(id));
+        if (p) return p.label;
+      }
+      return "";
+    },
+    [projectByTask],
+  );
 
   // asset selection & delete
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
@@ -177,12 +205,18 @@ function AssetsContent() {
         /* Keep the last successful company snapshot on a transient failure. */
       });
     api
-      .assetCounts()
+      .assetCounts(projectTask)
       .then(setCounts)
       .catch(() => {
         /* Keep the last successful counters on a transient failure. */
       });
-  }, []);
+    api
+      .assetProjects()
+      .then(setProjects)
+      .catch(() => {
+        /* keep the previous project snapshot */
+      });
+  }, [projectTask]);
 
   // Manual refresh: reload counts/companies and re-fetch the current page.
   const refresh = React.useCallback(() => {
@@ -274,7 +308,7 @@ function AssetsContent() {
   }, [tab, assetTarget]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: these controls intentionally reset server pagination.
-  React.useEffect(() => setPage(0), [tab, size, query]);
+  React.useEffect(() => setPage(0), [tab, size, query, projectTask]);
 
   const dslMode = query.trim() !== "";
 
@@ -288,7 +322,9 @@ function AssetsContent() {
     const offset = page * size;
     const run = async () => {
       try {
-        const r = dsl ? await api.searchAssets(dsl, tab, size, offset) : await api.assets(tab, size, offset);
+        const r = dsl
+          ? await api.searchAssets(dsl, tab, size, offset, projectTask)
+          : await api.assets(tab, size, offset, projectTask);
         if (assetsRequestRef.current !== request) return;
         setRows(r.assets);
         setRowsTab(tab);
@@ -312,7 +348,7 @@ function AssetsContent() {
       clearTimeout(tid);
       if (assetsRequestRef.current === request) assetsRequestRef.current++;
     };
-  }, [tab, page, size, query, refreshKey]);
+  }, [tab, page, size, query, refreshKey, projectTask]);
 
   React.useEffect(() => {
     if (tab === "company") return;
@@ -405,6 +441,53 @@ function AssetsContent() {
         </div>
       </div>
 
+      {projects.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">按 SRC 项目</span>
+            <span className="text-muted-foreground text-xs">
+              共 {projects.length} 个项目 · 点击切换，表格只显示该项目的资产
+            </span>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setProjectTask("")}
+              className={cn(
+                "flex shrink-0 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors",
+                projectTask === "" ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+              )}
+            >
+              <span className="text-sm font-medium">全部项目</span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {projects.reduce((sum, p) => sum + p.total, 0)} 项资产
+              </span>
+            </button>
+            {projects.map((p) => (
+              <button
+                type="button"
+                key={p.task_id}
+                onClick={() => setProjectTask(p.task_id)}
+                className={cn(
+                  "flex w-56 shrink-0 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors",
+                  projectTask === p.task_id ? "border-primary bg-primary/5" : "hover:bg-muted/50",
+                )}
+                title={p.label}
+              >
+                <span className="w-full truncate text-sm font-medium">{p.label}</span>
+                <span className="text-muted-foreground text-xs tabular-nums">
+                  {p.total} 项 · 域 {p.counts.root_domain ?? 0} · 子域 {p.counts.subdomain ?? 0} · IP{" "}
+                  {p.counts.ip ?? 0} · 接口 {p.counts.endpoint ?? 0}
+                </span>
+                {p.program_name ? (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400">已关联 SRC 平台</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="overflow-x-auto overflow-y-hidden">
           <TabsList variant="default">
@@ -491,7 +574,7 @@ function AssetsContent() {
         <TabsContent value="root_domain" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "域名", "ICP 备案", "归属企业", ""]}
+            cols={["", "项目", "域名", "ICP 备案", "归属企业", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -506,6 +589,9 @@ function AssetsContent() {
               <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                </TableCell>
+                <TableCell className="max-w-[160px] truncate text-xs">
+                  <ProjectChip label={projectLabelFor(a)} />
                 </TableCell>
                 <TableCell className="font-mono text-xs font-medium">{a.domain}</TableCell>
                 <TableCell className="text-xs">{a.icp || "—"}</TableCell>
@@ -532,7 +618,7 @@ function AssetsContent() {
         <TabsContent value="ip" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "IP", "C段", "绑定域名", "开放端口", ""]}
+            cols={["", "项目", "IP", "C段", "绑定域名", "开放端口", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -547,6 +633,9 @@ function AssetsContent() {
               <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                </TableCell>
+                <TableCell className="max-w-[160px] truncate text-xs">
+                  <ProjectChip label={projectLabelFor(a)} />
                 </TableCell>
                 <TableCell className="font-mono text-xs font-medium">{a.ip}</TableCell>
                 <TableCell className="font-mono text-xs">{a.c_segment || "—"}</TableCell>
@@ -579,7 +668,7 @@ function AssetsContent() {
         <TabsContent value="subdomain" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "域名", "根域名", "解析类型", "解析值", ""]}
+            cols={["", "项目", "域名", "根域名", "解析类型", "解析值", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -594,6 +683,9 @@ function AssetsContent() {
               <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                </TableCell>
+                <TableCell className="max-w-[160px] truncate text-xs">
+                  <ProjectChip label={projectLabelFor(a)} />
                 </TableCell>
                 <TableCell className="font-mono text-xs font-medium">{a.domain}</TableCell>
                 <TableCell className="font-mono text-xs">{a.root_domain || "—"}</TableCell>
@@ -621,7 +713,7 @@ function AssetsContent() {
         <TabsContent value="app" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "应用名", "Bundle ID", "分类", "ICP 备案", ""]}
+            cols={["", "项目", "应用名", "Bundle ID", "分类", "ICP 备案", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -636,6 +728,9 @@ function AssetsContent() {
               <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                </TableCell>
+                <TableCell className="max-w-[160px] truncate text-xs">
+                  <ProjectChip label={projectLabelFor(a)} />
                 </TableCell>
                 <TableCell className="text-xs font-medium">{a.app_name || "—"}</TableCell>
                 <TableCell className="font-mono text-xs">{a.bundle_id || "—"}</TableCell>
@@ -661,7 +756,7 @@ function AssetsContent() {
         <TabsContent value="service" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "服务", "域名", "IP", "端口", "状态码", "标题", "指纹", "认证", ""]}
+            cols={["", "项目", "服务", "域名", "IP", "端口", "状态码", "标题", "指纹", "认证", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -694,6 +789,9 @@ function AssetsContent() {
                 <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
                   <TableCell className="w-8 pr-0">
                     <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                  </TableCell>
+                  <TableCell className="max-w-[160px] truncate text-xs">
+                    <ProjectChip label={projectLabelFor(a)} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <Badge variant={isHttp ? "default" : "secondary"} className="font-mono text-[10px]">
@@ -757,7 +855,7 @@ function AssetsContent() {
         <TabsContent value="endpoint" className="mt-0 flex min-h-0 flex-1 flex-col gap-2">
           {searchBox}
           <AssetCard
-            cols={["", "方法", "完整地址", "参数", ""]}
+            cols={["", "项目", "方法", "完整地址", "参数", ""]}
             loaded={loaded}
             total={total}
             page={page}
@@ -772,6 +870,9 @@ function AssetsContent() {
               <TableRow key={a.id} className={selected.has(a.id) ? "bg-muted/40" : undefined}>
                 <TableCell className="w-8 pr-0">
                   <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} />
+                </TableCell>
+                <TableCell className="max-w-[160px] truncate text-xs">
+                  <ProjectChip label={projectLabelFor(a)} />
                 </TableCell>
                 <TableCell className="w-16">
                   <MethodBadge method={a.method || ""} />
