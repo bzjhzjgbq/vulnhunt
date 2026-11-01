@@ -1,36 +1,40 @@
 # Folder layout (final)
 
-Decision: **the migration is complete without renaming the physical folder.**
-`D:\VulnHunt` stays a junction to `D:\ARTEX`, and that is intentional.
+Copy-based migration completed on **2026-11-01 17:56**:
 
 ```
-D:\VulnHunt  ──junction──▶  D:\ARTEX   (physical files)
+D:\VulnHunt   ← real directory, 36.4 GB, the service runs from here
+D:\ARTEX      ← old snapshot taken at 17:50, kept only as a rollback copy
 ```
 
-## Why
+- All files were copied with `robocopy /E /COPY:DAT`; file counts matched
+  (756,469) and `config.json` / `vulnhunt.exe` hashes and sizes were verified.
+- `D:\VulnHunt` is **no longer a junction**. Scheduled tasks, the service,
+  backups and the Git repository all use it directly.
+- `D:\ARTEX` is now **stale**: it stopped receiving writes when the service was
+  restarted from the new tree. Do not run the app or edit code there.
 
-Everything user-visible was already migrated: the binary (`vulnhunt.exe`), the
-service, the database (`vulnhunt` role and database), the Go module, environment
-variables (`VULNHUNT_*`), scripts and scheduled tasks all use the VulnHunt name
-and the `D:\VulnHunt` path.
+## Deleting D:\ARTEX
 
-Windows refuses to rename a directory while any process holds it open, and the
-folder is held by the running agent session, the `start.bat` watchdog, the Boot
-Stack task and Explorer at various times. Renaming adds no functional value and
-repeated attempts only risk stopping the service, so the junction is the final
-state.
+Close DSH/this agent session first — its working directory is still
+`D:\ARTEX`, which is the only reason the folder is locked. After that you can
+delete it normally:
 
-## What still works
+```powershell
+Remove-Item D:\ARTEX -Recurse -Force
+```
 
-- `D:\VulnHunt\vulnhunt.exe` and `start.bat` — yes (junction is transparent);
-- scheduled tasks and shortcuts pointing at `D:\VulnHunt` — yes;
-- Git repository — yes;
-- backups, logs, config — yes.
+Check `Get-Process | Where-Object { $_.Path -like 'D:\ARTEX\*' }` first; it
+should be empty (the service now runs from `D:\VulnHunt`).
 
-## If you ever really need a physical folder
+Before deleting, confirm the new tree is healthy:
 
-The scripts are kept in the repo for reference:
-`finalize-migration.ps1` / `finalize-migration.cmd`. They run the rename with
-rollback, but must be started from outside `D:\ARTEX` and while the agent, DSH,
-Explorer and the watchdog are all closed. Running them is optional and not
-required for the product.
+```powershell
+Invoke-WebRequest http://127.0.0.1:8787/api/health
+cd D:\VulnHunt; git status
+```
+
+## Note for DSH / editors
+
+Open the project as `D:\VulnHunt` from now on. The old `D:\ARTEX` path is a
+snapshot and will be removed.
