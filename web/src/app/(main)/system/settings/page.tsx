@@ -391,11 +391,11 @@ export default function SystemSettingsPage() {
             <CardHeader>
               <CardTitle className="text-base">登录密码</CardTitle>
               <CardDescription>
-                账号固定为 ARTEX（后端既有约定）。改密码在左下角用户菜单 → 修改密码。
+                账号固定为 VULNHUNT（后端既有约定）。改密码在左下角用户菜单 → 修改密码。
               </CardDescription>
             </CardHeader>
             <CardContent className="text-muted-foreground text-sm">
-              本机部署默认开启免登录（start.bat 的 ARTEX_NO_LOGIN=1）并只监听 127.0.0.1；对外提供服务前请关闭免登录并启用上面的访问控制。
+              本机部署默认开启免登录（start.bat 的 VULNHUNT_NO_LOGIN=1）并只监听 127.0.0.1；对外提供服务前请关闭免登录并启用上面的访问控制。
             </CardContent>
           </Card>
         </TabsContent>

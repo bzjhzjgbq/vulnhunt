@@ -34,7 +34,7 @@ const (
 // 掉已有的管理员密码。
 const errDataSourceUnavailable = "数据源暂时不可用，请稍后重试"
 
-// noLogin 是本机私人部署的免登录开关，由 start.bat 里的 ARTEX_NO_LOGIN=1 打开。
+// noLogin 是本机私人部署的免登录开关，由 start.bat 里的 VULNHUNT_NO_LOGIN=1 打开。
 //
 // 为什么做成"启动期环境变量"而不是数据库设置项：它是这台机器上的人际决定
 // （私人电脑、不对外），而不是运行时业务配置；放在进程环境里就没有每次都查库的
@@ -43,7 +43,7 @@ const errDataSourceUnavailable = "数据源暂时不可用，请稍后重试"
 //
 // 打开后只做两件事：requireAuth 不再校验 JWT；authLogin 不再校验口令（仍然签发
 // 正常 JWT，前端 token 流转完全不变）。Basic Auth 是另一层，仍由系统设置控制。
-var noLogin = os.Getenv("ARTEX_NO_LOGIN") == "1"
+var noLogin = os.Getenv("VULNHUNT_NO_LOGIN") == "1"
 
 // validatePassword 返回空串表示通过，否则返回可直接展示给用户的中文原因。
 func validatePassword(pw string) string {
@@ -94,10 +94,10 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	return buf, nil
 }
 
-// signJWT issues a 7-day HS256 token for user ARTEX.
+// signJWT issues a 7-day HS256 token for user VULNHUNT.
 func signJWT(key []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   "ARTEX",
+		Subject:   "VULNHUNT",
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtTTL)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}).SignedString(key)
@@ -115,12 +115,12 @@ func verifyJWT(tokenStr string, key []byte) bool {
 }
 
 // extractToken reads the JWT from Authorization: Bearer header,
-// artex_token cookie, or ?token= query param (for SSE connections).
+// vulnhunt_token cookie, or ?token= query param (for SSE connections).
 func extractToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
 	}
-	if c, err := r.Cookie("artex_token"); err == nil && c.Value != "" {
+	if c, err := r.Cookie("vulnhunt_token"); err == nil && c.Value != "" {
 		return c.Value
 	}
 	return r.URL.Query().Get("token")
@@ -300,7 +300,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"token": tok})
 		return
 	}
-	if req.Username != "ARTEX" {
+	if req.Username != "VULNHUNT" {
 		writeErr(w, 401, "用户名或密码错误")
 		return
 	}

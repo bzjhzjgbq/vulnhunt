@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/notify"
+	"vulnhunt/notify"
 )
 
 var (

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 // Submission templates: the bounty platforms each want a slightly different

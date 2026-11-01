@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 // SRC 收录标准库：把各平台的「收什么 / 不收什么 / 最低等级 / 范围与特殊规则」做成结构化数据，

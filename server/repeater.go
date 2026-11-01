@@ -23,7 +23,7 @@ const (
 	repeaterDefaultTimeout = 30_000
 	repeaterMinTimeout     = 1_000
 	repeaterMaxTimeout     = 120_000
-	repeaterAllowLocalEnv  = "ARTEX_REPEATER_ALLOW_LOCAL"
+	repeaterAllowLocalEnv  = "VULNHUNT_REPEATER_ALLOW_LOCAL"
 )
 
 var repeaterHopByHop = map[string]struct{}{

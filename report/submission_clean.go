@@ -3,10 +3,10 @@ package report
 import (
 	"regexp"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
-// Submission-ready export: ARTEX reports are written against its internal graph
+// Submission-ready export: VULNHUNT reports are written against its internal graph
 // (finding/fact/intent/work ids). Those handles are meaningless — and noisy — on a
 // bounty platform, so "clean" exports replace them with neutral wording while
 // leaving the evidence (manifest lines, smali offsets, HTTP snippets) untouched.

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 const maxWorkerMessageBytes = 64 << 10

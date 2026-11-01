@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 type findingCaseExportPlan struct {

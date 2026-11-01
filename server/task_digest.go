@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 // Task digest: a one-call answer to "what is this task doing and why is it stuck?".

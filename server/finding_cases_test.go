@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
+	"vulnhunt/db"
+	"vulnhunt/intercept"
 )
 
 func testCaseServer(t *testing.T) (*Server, int64, []int64) {

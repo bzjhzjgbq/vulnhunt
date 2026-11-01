@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 func TestResolveSRCStandardMergesProgramOverride(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 func TestWorkerCountForTaskUsesOverrideOrGlobalDefault(t *testing.T) {

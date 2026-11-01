@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
+	"vulnhunt/agent"
 )
 
 func TestEngineDeleteBarrierRejectsNewTaskOperations(t *testing.T) {

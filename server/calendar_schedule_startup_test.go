@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 func calendarTestTime(s string) time.Time {

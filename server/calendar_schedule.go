@@ -7,8 +7,8 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/agent"
+	"vulnhunt/db"
 )
 
 type scheduleWindow struct {

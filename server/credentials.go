@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/traffic"
+	"vulnhunt/agent"
+	"vulnhunt/db"
+	"vulnhunt/llmrec"
+	"vulnhunt/traffic"
 	"github.com/Autumn-27/norma/transcript"
 )
 
