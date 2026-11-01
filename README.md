@@ -47,7 +47,7 @@ SRC 挖洞的痛点通常不是「找不到漏洞」，而是：
 
 **赏金台账**
 
-![赏金台账](screenshots/vulnhunt/bounty.png)
+![赏金台账](screenshots/vulnhunt/ledger.png)
 
 **系统设置**
 
