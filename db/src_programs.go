@@ -63,14 +63,17 @@ type SRCProgram struct {
 	LinkedTaskID          *int64     `json:"linked_task_id,omitempty"`
 	LinkedTaskStatus      string     `json:"linked_task_status,omitempty"`
 	LinkedTaskFindings    int        `json:"linked_task_findings"`
+	Archived              bool       `json:"archived"`
+	ArchivedReason        string     `json:"archived_reason,omitempty"`
 }
 
 // SRCProgramFilter narrows the catalog list.
 type SRCProgramFilter struct {
-	Query  string
-	Tag    string
-	Status string
-	Region string
+	Query           string
+	Tag             string
+	Status          string
+	Region          string
+	IncludeArchived bool
 }
 
 // SyncSRCPrograms upserts a full catalog snapshot. Rows missing from the snapshot
@@ -128,7 +131,8 @@ RETURNING (xmax = 0)`, p.SourceID, p.Name, p.TargetURL, p.Host, p.IconURL, regio
 const srcProgramCols = `p.id, p.source_id, p.name, p.target_url, p.host, p.icon_url,
  p.region, p.status, p.status_label, p.heat, p.tags, p.tag_ids,
  p.analysis_has_data, p.analysis_latest_month, p.analysis_latest_fetched_at,
- p.updated_at, t.id, COALESCE(t.status, ''), COALESCE(t.finding_count, 0)`
+ p.updated_at, t.id, COALESCE(t.status, ''), COALESCE(t.finding_count, 0),
+ p.archived, p.archived_reason`
 
 func scanSRCPrograms(rows *sql.Rows) ([]SRCProgram, error) {
 	var out []SRCProgram
@@ -140,7 +144,8 @@ func scanSRCPrograms(rows *sql.Rows) ([]SRCProgram, error) {
 		if err := rows.Scan(&p.ID, &p.SourceID, &p.Name, &p.TargetURL, &p.Host, &p.IconURL,
 			&p.Region, &p.Status, &p.StatusLabel, &p.Heat, &tags, &tagIDs,
 			&p.AnalysisHasData, &p.AnalysisLatestMonth, &fetched,
-			&p.UpdatedAt, &taskID, &p.LinkedTaskStatus, &p.LinkedTaskFindings); err != nil {
+			&p.UpdatedAt, &taskID, &p.LinkedTaskStatus, &p.LinkedTaskFindings,
+			&p.Archived, &p.ArchivedReason); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(tags, &p.Tags)
@@ -177,6 +182,10 @@ func (d *DB) ListSRCPrograms(ctx context.Context, f SRCProgramFilter) ([]SRCProg
 	if region := strings.TrimSpace(f.Region); region != "" {
 		args = append(args, region)
 		where = append(where, fmt.Sprintf("p.region = $%d", len(args)))
+	}
+	if !f.IncludeArchived {
+		// 默认只展示仍在运营的平台：本地标记下线的、以及上游标记 offline/closed 的都不出现。
+		where = append(where, "p.archived = false AND p.status NOT IN ('offline','closed')")
 	}
 	query := `SELECT ` + srcProgramCols + ` FROM src_programs p
 LEFT JOIN LATERAL (
@@ -221,4 +230,19 @@ LEFT JOIN LATERAL (
 func (d *DB) SetTaskSRCProgram(ctx context.Context, taskID, programID int64) error {
 	_, err := d.ExecContext(ctx, `UPDATE tasks SET src_program_id=$2, updated_at=now() WHERE id=$1`, taskID, programID)
 	return err
+}
+
+// SetSRCProgramArchived hides (or restores) a catalog row without deleting it.
+// Archived rows keep their linked tasks so history stays attributable.
+func (d *DB) SetSRCProgramArchived(ctx context.Context, id int64, archived bool, reason string) (bool, error) {
+	reason = strings.TrimSpace(reason)
+	res, err := d.ExecContext(ctx, `UPDATE src_programs
+SET archived=$2, archived_reason=CASE WHEN $2 THEN $3 ELSE '' END,
+    archived_at=CASE WHEN $2 THEN now() ELSE NULL END, updated_at=now()
+WHERE id=$1`, id, archived, reason)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
 }

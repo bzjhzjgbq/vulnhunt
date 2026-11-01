@@ -1678,3 +1678,8 @@ CREATE TABLE IF NOT EXISTS bounty_submissions (
 CREATE INDEX IF NOT EXISTS idx_bounty_finding ON bounty_submissions(finding_id);
 CREATE INDEX IF NOT EXISTS idx_bounty_program ON bounty_submissions(program_id);
 CREATE INDEX IF NOT EXISTS idx_bounty_status ON bounty_submissions(status);
+
+-- 平台目录维护：已停止运营/站点不可用的 SRC 不在默认列表中展示（保留记录与历史关联）。
+ALTER TABLE src_programs ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE src_programs ADD COLUMN IF NOT EXISTS archived_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE src_programs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
