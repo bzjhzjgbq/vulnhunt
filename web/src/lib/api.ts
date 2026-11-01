@@ -512,7 +512,9 @@ export const api = {
       `/bounty/submissions${qs ? `?${qs}` : ""}`,
     ).then((r) => ({ items: arr(r.items), total: r.total }));
   },
-  bountySummary: () => get<BountySummary>("/bounty/summary"),
+  // 空账本时后端返回 by_program:null（Go nil slice），这里统一成数组，页面不必处处防空。
+  bountySummary: () =>
+    get<BountySummary>("/bounty/summary").then((s) => ({ ...s, by_program: arr(s.by_program) })),
   createBounty: (body: Partial<BountySubmission>) => post<BountySubmission>("/bounty/submissions", body),
   updateBounty: (id: number, body: Partial<BountySubmission>) =>
     patch<BountySubmission>(`/bounty/submissions/${id}`, body),
