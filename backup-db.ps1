@@ -23,7 +23,7 @@ function Invoke-Native($exe, $argv) {
   $out = & $exe @argv 2>&1
   $code = $LASTEXITCODE
   if ($null -eq $code) { $code = 1 }
-  if ($out) { Add-Content -LiteralPath $log -Value ($out | Out-String).Trim() -Encoding UTF8 }
+  if ($out -and $code -ne 0) { Add-Content -LiteralPath $log -Value ($out | Out-String).Trim() -Encoding UTF8 }
   return $code
 }
 
