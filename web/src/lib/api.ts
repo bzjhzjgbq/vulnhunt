@@ -126,7 +126,7 @@ import type {
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("artex_token");
+  return localStorage.getItem("vulnhunt_token");
 }
 
 export async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -142,8 +142,8 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (r.status === 401) {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("artex_token");
-      document.cookie = "artex_token=; path=/; max-age=0";
+      localStorage.removeItem("vulnhunt_token");
+      document.cookie = "vulnhunt_token=; path=/; max-age=0";
       window.location.href = "/login";
     }
     throw new Error("未授权");
@@ -183,7 +183,7 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
 // Token is appended as ?token= because SSE can't carry cookies cross-origin.
 // mockReport returns a canned Markdown report for the demo.
 function mockReport(_task?: string): string {
-  return `# ARTEX 渗透测试报告 — Acme Corp
+  return `# VULNHUNT 渗透测试报告 — Acme Corp
 
 ## 概览
 - 范围：acme.com（含 www / admin / api / shop / vpn 子域）

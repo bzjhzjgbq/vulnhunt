@@ -13,10 +13,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/guard"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/llmrec"
+	"vulnhunt/db"
+	"vulnhunt/guard"
+	"vulnhunt/intercept"
+	"vulnhunt/llmrec"
 	"github.com/Autumn-27/norma/llm"
 )
 

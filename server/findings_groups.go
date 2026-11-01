@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 const maxFindingFollowUpRunes = 4000

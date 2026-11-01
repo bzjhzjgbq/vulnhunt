@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// liveArtex answers whether a real ARTEX instance is serving the same machine.
+// liveVulnhunt answers whether a real VULNHUNT instance is serving the same machine.
 // Server tests load every task from PostgreSQL and start the engine for them, so
 // running them against a live deployment's database steals its intents and leaves
 // workers pointed at a closed pool (observed 2026-10-31: tests claimed production
 // intents and every finding/traffic test failed on "database is closed").
-func liveArtex() bool {
+func liveVulnhunt() bool {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := client.Get("http://127.0.0.1:8787/api/health")
 	if err != nil {
@@ -32,11 +32,11 @@ func liveArtex() bool {
 // packages are avoided when running `go test ./...`.
 //
 // It also refuses to run against a live instance's database unless explicitly
-// overridden: set ARTEX_TESTS_ALLOW_LIVE=1 when that interference is understood.
+// overridden: set VULNHUNT_TESTS_ALLOW_LIVE=1 when that interference is understood.
 func TestMain(m *testing.M) {
-	if os.Getenv("ARTEX_TESTS_ALLOW_LIVE") != "1" && liveArtex() {
-		fmt.Fprintln(os.Stderr, "ARTEX is serving on 127.0.0.1:8787; skipping server tests to protect the live database "+
-			"(set ARTEX_TESTS_ALLOW_LIVE=1 to run anyway)")
+	if os.Getenv("VULNHUNT_TESTS_ALLOW_LIVE") != "1" && liveVulnhunt() {
+		fmt.Fprintln(os.Stderr, "VULNHUNT is serving on 127.0.0.1:8787; skipping server tests to protect the live database "+
+			"(set VULNHUNT_TESTS_ALLOW_LIVE=1 to run anyway)")
 		os.Exit(0)
 	}
 	dsn, _, err := db.DSN()

@@ -67,13 +67,13 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
       setAuthed(true);
       return;
     }
-    // 本机免登录部署（start.bat 里的 ARTEX_NO_LOGIN=1）：后端不再校验口令，这里
+    // 本机免登录部署（start.bat 里的 VULNHUNT_NO_LOGIN=1）：后端不再校验口令，这里
     // 静默换一个 token 再进主界面，省掉登录页那一跳。后端仍然要求登录时这个调用
     // 会拿到 401，此时不拦在这里——交给 api.ts 的 401 处理回落到 /login。
     let cancelled = false;
     void (async () => {
       try {
-        const { token } = await api.login("ARTEX", "");
+        const { token } = await api.login("VULNHUNT", "");
         if (!cancelled) {
           auth.setToken(token);
           setAuthed(true);

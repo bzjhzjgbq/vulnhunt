@@ -1,4 +1,4 @@
-module github.com/Autumn-27/artex
+module vulnhunt
 
 go 1.26.10
 

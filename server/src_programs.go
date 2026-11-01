@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 	"golang.org/x/net/publicsuffix"
 )
 
 // SRC bounty catalog: browse the public SRC index, then turn one program into an
-// ARTEX task with an explicit scope and an explicit authorization acknowledgement.
+// VULNHUNT task with an explicit scope and an explicit authorization acknowledgement.
 // The catalog itself is reference data; nothing here starts testing on its own.
 
 const defaultSRCCatalogURL = "https://www.ver.dpdns.org/api/public/src"
@@ -72,7 +72,7 @@ func (s *Server) srcProgramArchive(w http.ResponseWriter, r *http.Request) {
 // srcCatalogSync pulls the public catalog and upserts it. Failures are reported,
 // never fatal: an empty catalog just means "sync again later".
 func (s *Server) srcCatalogSync(w http.ResponseWriter, r *http.Request) {
-	url := strings.TrimSpace(os.Getenv("ARTEX_SRC_CATALOG_URL"))
+	url := strings.TrimSpace(os.Getenv("VULNHUNT_SRC_CATALOG_URL"))
 	if url == "" {
 		url = defaultSRCCatalogURL
 	}
@@ -109,7 +109,7 @@ func (s *Server) srcCatalogSync(w http.ResponseWriter, r *http.Request) {
 }
 
 // srcProgramLaunch creates a task for one program. It refuses without an explicit
-// authorization acknowledgement and a non-empty scope: ARTEX must never start
+// authorization acknowledgement and a non-empty scope: VULNHUNT must never start
 // probing a company just because its SRC page is listed.
 func (s *Server) srcProgramLaunch(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -313,7 +313,7 @@ func (s *Server) srcProgramScopeCandidates(w http.ResponseWriter, r *http.Reques
 		writeErr(w, 400, err.Error())
 		return
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ARTEX-SRC/1.0)")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; VULNHUNT-SRC/1.0)")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		writeErr(w, 502, "抓取项目页失败: "+err.Error())

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/agent"
+	"vulnhunt/db"
 )
 
 // Intent watchdog: reclaim work the engine can no longer account for.

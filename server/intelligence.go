@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 func intelligenceError(w http.ResponseWriter, err error) {

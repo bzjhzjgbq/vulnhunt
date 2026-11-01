@@ -1,14 +1,14 @@
-﻿# ARTEX 开机自举：按依赖顺序拉起 Docker Desktop -> artex-pg -> artex.exe 守护。
+﻿# VULNHUNT 开机自举：按依赖顺序拉起 Docker Desktop -> vulnhunt-pg -> vulnhunt.exe 守护。
 #
 # 为什么需要它：手工启动链有三层依赖（Docker 守护 -> Postgres 容器 -> 后端），
-# 顺序错了就会出现「artex 起来了但连不上库」；而且从别的会话里 Start-Process
+# 顺序错了就会出现「vulnhunt 起来了但连不上库」；而且从别的会话里 Start-Process
 # 拉起的进程会被连带杀掉，所以本脚本只负责把栈按序拉齐，由计划任务在登录时调用。
 #
-# 幂等：artex 已在 8787 上跑就直接退出，不会起第二个实例。
+# 幂等：vulnhunt 已在 8787 上跑就直接退出，不会起第二个实例。
 # 日志：追加到 data\boot-stack.log，不覆盖。
 
 $ErrorActionPreference = 'SilentlyContinue'
-$root = 'D:\ARTEX'
+$root = 'D:\VULNHUNT'
 $log  = Join-Path $root 'data\boot-stack.log'
 
 # LLM 调用记录保留天数。每条记录含完整提示词与原始响应（实测均 223KB），
@@ -23,16 +23,16 @@ function Log([string]$m) {
 # 按天裁剪 LLM 调用记录（llm_records）。
 # 为什么放在看门狗里：引擎没有自带的保留策略，而本脚本每 5 分钟被触发一次，
 # 是最省事的现成定时器。必须放在下面那道「已在运行则 return」守卫【之前】，
-# 否则 artex 健康时脚本会提前返回，清理永远不执行。
+# 否则 vulnhunt 健康时脚本会提前返回，清理永远不执行。
 function Invoke-LLMRecordRetention {
     if ($llmRecordKeepDays -le 0) { return }
     # 水位安全阀：完整 raw_request/raw_response 是取证的唯一来源，正常保留 N 天；
     # 但若保留策略本身失效（看门狗任务损坏等），这两级水位保证磁盘永不被填满。
-    $sz = docker exec artex-pg psql -U artex -d artex -t -A -c "SELECT pg_total_relation_size('llm_records');" 2>$null
+    $sz = docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -t -A -c "SELECT pg_total_relation_size('llm_records');" 2>$null
     if ("$sz".Trim() -match '^\d+$') {
         $gb = [double]$sz / 1GB
         if ($gb -gt 150) {
-            docker exec artex-pg psql -U artex -d artex -c "TRUNCATE llm_records;" 2>$null
+            docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -c "TRUNCATE llm_records;" 2>$null
             Log "WARN: 记录表 $([math]::Round($gb,1))GB 超应急阈值，已清空"
             return
         }
@@ -42,9 +42,9 @@ function Invoke-LLMRecordRetention {
         }
     }
 
-    $before = docker exec artex-pg psql -U artex -d artex -t -A -c "SELECT count(*) FROM llm_records;" 2>$null
+    $before = docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -t -A -c "SELECT count(*) FROM llm_records;" 2>$null
     if ("$before".Trim() -notmatch '^\d+$') { return }   # 库不可达，静默跳过
-    $del = docker exec artex-pg psql -U artex -d artex -t -A -c "WITH d AS (DELETE FROM llm_records WHERE ts < now() - interval '$llmRecordKeepDays days' RETURNING 1) SELECT count(*) FROM d;" 2>$null
+    $del = docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -t -A -c "WITH d AS (DELETE FROM llm_records WHERE ts < now() - interval '$llmRecordKeepDays days' RETURNING 1) SELECT count(*) FROM d;" 2>$null
     $n = 0
     if ([int]::TryParse("$del".Trim(), [ref]$n) -and $n -gt 0) {
         Log "LLM 记录清理：删除 $n 条（早于 $llmRecordKeepDays 天前），原 $("$before".Trim()) 条"
@@ -58,14 +58,14 @@ function Invoke-LLMRecordRetention {
 # 17 个约 85 分钟一轮），避免为探测额外消耗本就紧张的额度。
 # 判定保守：只有 HTTP 200 才解除排除，其余一律维持现状。
 function Invoke-ExcludedChannelProbe {
-    $ids = @(docker exec artex-pg psql -U artex -d artex -t -A -c "SELECT id FROM llm_profiles WHERE pool_exclude ORDER BY id;" 2>$null |
+    $ids = @(docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -t -A -c "SELECT id FROM llm_profiles WHERE pool_exclude ORDER BY id;" 2>$null |
         Where-Object { "$_".Trim() -match '^\d+$' } | ForEach-Object { [int]"$_".Trim() })
     if ($ids.Count -eq 0) { return }
 
     # 轮转指针：从上次探测的下一个 id 开始，走到末尾回头，保证每个都被轮到。
     # 注意指针只在「探针真正得出结论」后才前移（见下），否则一次 API 抖动就会让某个
     # 已恢复的渠道被跳过整整一圈（18 项 ≈ 90 分钟）才轮到——2026-10-15 13:53 就出现过：
-    # 探针判定 qodercn 已恢复，但解除排除的 POST 正好撞上 artex 重启而失败，指针照旧前移。
+    # 探针判定 qodercn 已恢复，但解除排除的 POST 正好撞上 vulnhunt 重启而失败，指针照旧前移。
     $stateFile = Join-Path $root 'data\excluded-probe.state'
     $last = 0
     if (Test-Path $stateFile) { [void][int]::TryParse((Get-Content $stateFile -Raw).Trim(), [ref]$last) }
@@ -74,7 +74,7 @@ function Invoke-ExcludedChannelProbe {
 
     # 不用 coalesce：psql 的 -A -t 本就把 NULL 渲染成空字段，而 coalesce(x,'') 在
     # PowerShell 双引号里会写成 coalesce(x,''')（SQL 语法错误），让整条查询静默返回空。
-    $row = (docker exec artex-pg psql -U artex -d artex -t -A -F'|' -c "SELECT id,name,format,base_url,model,priority,streaming,context_window_k,reasoning_effort,thinking_type,rate_per_second,rate_per_minute,api_key FROM llm_profiles WHERE id=$target;" 2>$null | Out-String).Trim()
+    $row = (docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -t -A -F'|' -c "SELECT id,name,format,base_url,model,priority,streaming,context_window_k,reasoning_effort,thinking_type,rate_per_second,rate_per_minute,api_key FROM llm_profiles WHERE id=$target;" 2>$null | Out-String).Trim()
     $g = $row -split '\|'
     if ($row -eq '' -or $g.Count -lt 13) { Log "WARN: id=$target 读取失败，跳过本轮探测"; return }
     $model = $g[4]; $baseUrl = $g[3]; $apiKey = $g[12]
@@ -117,15 +117,15 @@ function Invoke-ExcludedChannelProbe {
     try {
         $req = @{
             Uri = 'http://127.0.0.1:8787/api/llm/profiles'; Method = 'POST'; TimeoutSec = 25; UseBasicParsing = $true;
-            Headers = (Get-ArtexAuthHeader); ContentType = 'application/json'
+            Headers = (Get-VulnhuntAuthHeader); ContentType = 'application/json'
             Body = ([System.Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 6 -Compress)))
         }
         # 系统设置里开了 HTTP Basic Auth 后，/api 也会被 gate 挡住：先拿 gate cookie 再带 JWT 调。
-        $gate = Get-ArtexGateSession
+        $gate = Get-VulnhuntGateSession
         if ($gate) { $req.WebSession = $gate }
         $null = Invoke-WebRequest @req
         # 清掉可能残留的熔断记录，让它以干净状态回到链里
-        docker exec artex-pg psql -U artex -d artex -c "DELETE FROM llm_profile_health WHERE profile_id=$target;" 2>$null | Out-Null
+        docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -c "DELETE FROM llm_profile_health WHERE profile_id=$target;" 2>$null | Out-Null
         Set-Content -Path $stateFile -Value "$target" -Encoding ASCII   # 只有真正恢复了才前移
         Log "id=$target 已回到池链"
     } catch {
@@ -134,15 +134,15 @@ function Invoke-ExcludedChannelProbe {
     }
 }
 
-# 用 D:\ARTEX\jwt.key 现场签一个 HS256 令牌（与后端同源，无需交互式登录）。
-function Get-ArtexAuthHeader {
+# 用 D:\VULNHUNT\jwt.key 现场签一个 HS256 令牌（与后端同源，无需交互式登录）。
+function Get-VulnhuntAuthHeader {
     $keyFile = Join-Path $root 'jwt.key'
     if (-not (Test-Path $keyFile)) { return @{} }
     $secret = [System.Text.Encoding]::ASCII.GetBytes(([System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($keyFile))).Trim())
     $b64 = { param([byte[]]$b) [Convert]::ToBase64String($b).TrimEnd('=').Replace('+','-').Replace('/','_') }
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $h = & $b64 ([System.Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
-    $p2 = & $b64 ([System.Text.Encoding]::UTF8.GetBytes(([ordered]@{ sub = 'ARTEX'; exp = ($now + 300); iat = $now } | ConvertTo-Json -Compress)))
+    $p2 = & $b64 ([System.Text.Encoding]::UTF8.GetBytes(([ordered]@{ sub = 'VULNHUNT'; exp = ($now + 300); iat = $now } | ConvertTo-Json -Compress)))
     $hm = New-Object System.Security.Cryptography.HMACSHA256
     $hm.Key = $secret
     $sig = & $b64 ($hm.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$h.$p2")))
@@ -153,7 +153,7 @@ function Get-ArtexAuthHeader {
 # /api/basic-auth/check（与前端同一路径，免 JWT），凭据由开启时写入 data\basic-auth.cred。
 # 未开启 Basic Auth 时该文件不存在，或 check 直接 204 无 cookie —— 两种都退化为 null，
 # 调用方照旧只带 JWT。
-function Get-ArtexGateSession {
+function Get-VulnhuntGateSession {
     $credFile = Join-Path $root 'data\basic-auth.cred'
     if (-not (Test-Path $credFile)) { return $null }
     try {
@@ -170,13 +170,13 @@ function Get-ArtexGateSession {
     }
 }
 
-# 判定 artex 是否「进程活着但引擎卡死」（僵死）。
-# 为什么需要它：2026-10-14 的僵死里 artex 进程健在、/api/health 照样返回 200
+# 判定 vulnhunt 是否「进程活着但引擎卡死」（僵死）。
+# 为什么需要它：2026-10-14 的僵死里 vulnhunt 进程健在、/api/health 照样返回 200
 # （HTTP 服务本身没坏），但三个 worker 全卡在无超时的上游调用上 —— 日志不再增长、
 # DB 不再写入、running 意图一直挂着。只看进程或只看 health 都发现不了，
 # 所以必须四条件同时成立才判僵死，避免把「任务全部做完后的正常安静」误杀。
-function Test-ArtexZombie([int]$ArtexPid) {
-    $logFile = Join-Path $root 'data\artex.stderr.log'
+function Test-VulnhuntZombie([int]$VulnhuntPid) {
+    $logFile = Join-Path $root 'data\vulnhunt.stderr.log'
     if (-not (Test-Path $logFile)) { return $false }
 
     # (a) 日志静默时长：正常推进时 worker 每次工具调用都会留痕
@@ -192,7 +192,7 @@ function Test-ArtexZombie([int]$ArtexPid) {
     if (-not $alive) { return $false }
 
     # (c) 是否还有 running 意图挂着（全做完 = 正常安静，不是僵死）
-    $raw = docker exec artex-pg psql -U artex -d artex -t -A -c "SELECT count(*) FROM exploration_nodes WHERE kind='intent' AND state='running';" 2>$null
+    $raw = docker exec vulnhunt-pg psql -U vulnhunt -d vulnhunt -t -A -c "SELECT count(*) FROM exploration_nodes WHERE kind='intent' AND state='running';" 2>$null
     $n = 0
     if (-not [int]::TryParse("$raw".Trim(), [ref]$n)) { return $false }
     if ($n -le 0) { return $false }
@@ -212,7 +212,7 @@ $watchPatterns = [ordered]@{
     '僵死'            = '僵死判据成立并强制重启'
 }
 function Invoke-LogWatch {
-    $logFile = Join-Path $root 'data\artex.stderr.log'
+    $logFile = Join-Path $root 'data\vulnhunt.stderr.log'
     if (-not (Test-Path $logFile)) { return }
     $stateFile = Join-Path $root 'data\log-watch.state'
     $prev = 0
@@ -243,14 +243,14 @@ Invoke-ExcludedChannelProbe
 # --- 0) 已在运行则不动；但僵死必须强制重启 ----------------------------------
 # 本脚本现在既被登录触发，也被看门狗每 5 分钟触发一次，所以这里是两道判断：
 # 活着 → 直接返回（幂等）；僵死 → 拆掉再重建，否则引擎会一直挂着不推进。
-$existing = Get-Process artex -ErrorAction SilentlyContinue
+$existing = Get-Process vulnhunt -ErrorAction SilentlyContinue
 if ($existing) {
-    if (-not (Test-ArtexZombie -ArtexPid $existing.Id)) {
-        Log "artex 已在运行 (pid=$($existing.Id)) 且正常，跳过本次自举"
+    if (-not (Test-VulnhuntZombie -VulnhuntPid $existing.Id)) {
+        Log "vulnhunt 已在运行 (pid=$($existing.Id)) 且正常，跳过本次自举"
         return
     }
-    Log "artex (pid=$($existing.Id)) 僵死 → 强制重启"
-    # 先拆 start.bat 守护再杀 artex，否则守护会在我们重建前把残留进程再拉起来
+    Log "vulnhunt (pid=$($existing.Id)) 僵死 → 强制重启"
+    # 先拆 start.bat 守护再杀 vulnhunt，否则守护会在我们重建前把残留进程再拉起来
     Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" |
         Where-Object { $_.CommandLine -match 'start\.bat' } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -281,19 +281,19 @@ if (-not $dockerReady) { Log 'FATAL: Docker 守护 180s 内未就绪，放弃本
 
 # --- 2) Postgres 容器 -------------------------------------------------------
 # 容器带 restart=unless-stopped，正常会随 Docker 自动起来；这里兜底。
-$state = docker inspect -f '{{.State.Running}}' artex-pg 2>$null
+$state = docker inspect -f '{{.State.Running}}' vulnhunt-pg 2>$null
 if ("$state" -notmatch 'True') {
-    Log 'artex-pg 未运行，执行 docker start'
-    docker start artex-pg | Out-Null
+    Log 'vulnhunt-pg 未运行，执行 docker start'
+    docker start vulnhunt-pg | Out-Null
 }
 # 必须双条件就绪：
 #   (a) 容器内 pg_isready —— 证明 postmaster 活着；
 #   (b) host 侧 TCP 127.0.0.1:<config.json 里的 database.port> —— 证明 Docker 用户态转发器
-#       （com.docker.backend）已经把端口接上。只查 (a) 会误判：2026-10-13 22:01 那次 artex
+#       （com.docker.backend）已经把端口接上。只查 (a) 会误判：2026-10-13 22:01 那次 vulnhunt
 #       就是 (a) 通过、(b) 未就绪，启动即 `open stores: ping postgres` 失败退出 code=1。
 # 宿主侧探测端口取自 config.json：Docker 的 5432 用户态映射曾整条卡死（com.docker.backend
 # 里的陈旧条目，重建容器/boot 都不清），PG 因此改发布到 15432。写死 5432 会让看门狗永远
-# 等不到就绪，所以这里跟 artex 用同一个端口来源。
+# 等不到就绪，所以这里跟 vulnhunt 用同一个端口来源。
 $pgHostPort = 5432
 try {
     $cfgPath = Join-Path $root 'config.json'
@@ -304,7 +304,7 @@ try {
 } catch { }
 $pgReady = $false
 for ($i = 0; $i -lt 60; $i++) {              # 最多等 120s
-    $probe = docker exec artex-pg pg_isready -U artex -d artex 2>&1
+    $probe = docker exec vulnhunt-pg pg_isready -U vulnhunt -d vulnhunt 2>&1
     $inContainer = ("$probe" -match 'accepting connections')
     $onHost = $false
     $tcp = New-Object System.Net.Sockets.TcpClient
@@ -326,17 +326,17 @@ for ($i = 0; $i -lt 60; $i++) {              # 最多等 120s
 if (-not $pgReady) { Log 'FATAL: Postgres 120s 内未双就绪，放弃本次自举'; return }
 
 # --- 3) 日志轮转：单个 stderr 日志超过 200MB 就先归档再启动（保留最近 2 份）---
-# 只在 artex 未运行时执行（本脚本的启动分支），此时文件句柄已释放；运行中不碰它。
-$stderrLog = Join-Path $root 'data\artex.stderr.log'
+# 只在 vulnhunt 未运行时执行（本脚本的启动分支），此时文件句柄已释放；运行中不碰它。
+$stderrLog = Join-Path $root 'data\vulnhunt.stderr.log'
 if (Test-Path $stderrLog) {
     $logSize = (Get-Item $stderrLog).Length
     if ($logSize -gt 200MB) {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $rotated = Join-Path $root ("data\artex.stderr.$stamp.log")
+        $rotated = Join-Path $root ("data\vulnhunt.stderr.$stamp.log")
         try {
             Move-Item -LiteralPath $stderrLog -Destination $rotated -Force
             Log "旧日志已轮转: $rotated ($([math]::Round($logSize / 1MB, 1)) MB)"
-            Get-ChildItem (Join-Path $root 'data') -Filter 'artex.stderr.20*.log' |
+            Get-ChildItem (Join-Path $root 'data') -Filter 'vulnhunt.stderr.20*.log' |
                 Sort-Object LastWriteTime -Descending |
                 Select-Object -Skip 2 |
                 Remove-Item -Force -ErrorAction SilentlyContinue
@@ -347,9 +347,9 @@ if (Test-Path $stderrLog) {
 }
 
 # --- 3) 后端守护（start.bat 自带崩溃重启与换装）-----------------------------
-Log '启动 artex 守护 start.bat'
+Log '启动 vulnhunt 守护 start.bat'
 Start-Process -FilePath 'cmd.exe' `
-    -ArgumentList '/c "call D:\ARTEX\start.bat >> D:\ARTEX\data\artex.stderr.log 2>&1"' `
+    -ArgumentList '/c "call D:\VULNHUNT\start.bat >> D:\VULNHUNT\data\vulnhunt.stderr.log 2>&1"' `
     -WorkingDirectory $root -WindowStyle Hidden
 
 $healthy = $false
@@ -359,7 +359,7 @@ for ($i = 0; $i -lt 90; $i++) {              # 最多等 180s 变健康
         $h = Invoke-WebRequest 'http://127.0.0.1:8787/api/health' -TimeoutSec 5 -UseBasicParsing
         if ($h.StatusCode -eq 200) {
             $healthy = $true
-            Log "artex 健康（约 $($i * 2)s）: $($h.Content)"
+            Log "vulnhunt 健康（约 $($i * 2)s）: $($h.Content)"
             break
         }
     } catch {}

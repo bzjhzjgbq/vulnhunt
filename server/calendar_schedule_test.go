@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 func TestEvaluateScheduleWindowWeeklyCrossMidnight(t *testing.T) {

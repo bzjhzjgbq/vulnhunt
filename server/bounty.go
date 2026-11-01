@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Autumn-27/artex/db"
+	"vulnhunt/db"
 )
 
 // Bounty ledger API: record per-platform submissions and read the aggregate.

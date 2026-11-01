@@ -19,24 +19,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/artex/agent"
-	"github.com/Autumn-27/artex/db"
-	"github.com/Autumn-27/artex/intercept"
-	"github.com/Autumn-27/artex/llmpool"
-	"github.com/Autumn-27/artex/llmrec"
-	"github.com/Autumn-27/artex/report"
-	"github.com/Autumn-27/artex/traffic"
+	"vulnhunt/agent"
+	"vulnhunt/db"
+	"vulnhunt/intercept"
+	"vulnhunt/llmpool"
+	"vulnhunt/llmrec"
+	"vulnhunt/report"
+	"vulnhunt/traffic"
 	"github.com/Autumn-27/norma/llm"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
 )
 
-// BuildVersion is the backend application version, injected from cmd/artex at
+// BuildVersion is the backend application version, injected from cmd/vulnhunt at
 // startup (which in turn gets it from -ldflags "-X main.version=<tag>").
 // Defaults to "dev" for local builds. Exposed to the frontend via GET /api/health.
 var BuildVersion = "dev"
 
-// Server exposes the ARTEX backend over a JSON HTTP API for the shadcn/ui
+// Server exposes the VULNHUNT backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
 	scheduleMu sync.Mutex
@@ -1049,7 +1049,7 @@ func (s *Server) Handler() http.Handler {
 // --- handlers ---
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"ok": true, "service": "artex", "version": BuildVersion}
+	out := map[string]any{"ok": true, "service": "vulnhunt", "version": BuildVersion}
 	// Surface database reachability: during the 2026-10-31 19:02 DB restart this
 	// endpoint kept answering {"ok":true} while every write failed, which sent the
 	// operator looking in the wrong place. The HTTP status stays 200 on purpose
@@ -2305,7 +2305,7 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	// clean=1 strips ARTEX's internal finding/fact/intent handles so the export can
+	// clean=1 strips VULNHUNT's internal finding/fact/intent handles so the export can
 	// be pasted into a bounty platform as-is. Applied before staging so the md zip
 	// gets the same cleaned text as the single-file export.
 	if q.Get("clean") == "1" {
@@ -2320,7 +2320,7 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	stage, err := os.MkdirTemp("", "artex-finding-export-")
+	stage, err := os.MkdirTemp("", "vulnhunt-finding-export-")
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
