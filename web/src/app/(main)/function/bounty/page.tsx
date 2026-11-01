@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import type { BountySubmission, BountySummary, SRCProgram } from "@/lib/types";
+import type { BountySubmission, BountySummary, Finding, SRCProgram } from "@/lib/types";
 import { PlusIcon, Trash2Icon, WalletIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -74,6 +74,7 @@ export default function BountyPage() {
   const [items, setItems] = React.useState<BountySubmission[]>([]);
   const [summary, setSummary] = React.useState<BountySummary | null>(null);
   const [programs, setPrograms] = React.useState<SRCProgram[]>([]);
+  const [findings, setFindings] = React.useState<Finding[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<BountySubmission | null>(null);
@@ -83,9 +84,14 @@ export default function BountyPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [list, sum] = await Promise.all([api.bountySubmissions(), api.bountySummary()]);
+      const [list, sum, fs] = await Promise.all([
+        api.bountySubmissions(),
+        api.bountySummary(),
+        api.findings(),
+      ]);
       setItems(list.items);
       setSummary(sum);
+      setFindings(fs);
     } catch (e) {
       toast.error(`加载赏金台账失败：${(e as Error).message}`);
     } finally {
@@ -176,6 +182,11 @@ export default function BountyPage() {
     }
   }
 
+  const submittedIDs = new Set(items.map((i) => i.finding_id));
+  const pendingSubmit = findings.filter(
+    (f) => f.status === "confirmed" && !submittedIDs.has(Number(f.finding_id ?? f.id)),
+  );
+
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -197,6 +208,39 @@ export default function BountyPage() {
         <StatCard label="已受理金额" value={money(summary?.accepted_amount_cents)} sub="含已到账" />
         <StatCard label="已到账金额" value={money(summary?.paid_amount_cents)} sub="实际收款" accent />
       </div>
+
+      {pendingSubmit.length > 0 && (
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">待登记的已确认漏洞（{pendingSubmit.length}）</span>
+              <span className="text-muted-foreground text-xs">先去发现页确认，再回到这里登记提交结果</span>
+            </div>
+            {pendingSubmit.slice(0, 8).map((f) => (
+              <div key={f.id} className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground w-12 shrink-0 text-xs uppercase">{f.severity}</span>
+                <Link
+                  className="min-w-0 flex-1 truncate hover:underline"
+                  href={`/function/findings/detail?id=${encodeURIComponent(f.id)}`}
+                >
+                  {f.name || f.vulnclass}
+                </Link>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditing(null);
+                    setForm({ ...EMPTY_FORM, finding_id: String(f.finding_id ?? f.id) });
+                    setOpen(true);
+                  }}
+                >
+                  登记
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">

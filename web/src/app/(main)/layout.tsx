@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import * as React from "react";
 
+import { usePathname, useRouter } from "next/navigation";
+
 import { AppSidebar } from "@/app/(main)/_components/sidebar/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { auth } from "@/lib/auth";
@@ -34,6 +36,32 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
   // disables. No token → bounce to /login; render nothing until confirmed so no
   // protected UI (or its API calls) flashes for a logged-out visitor.
   const [authed, setAuthed] = React.useState(false);
+  // 已下线的产品面：直接访问旧地址会回到工作台，避免「功能还在但不该用」。
+  // traffic / repeater / 任务详情 / 发现详情 不在其中——证据查看与重发仍被详情页引用。
+  const pathname = usePathname();
+  const router = useRouter();
+  React.useEffect(() => {
+    if (!pathname) return;
+    const retired = [
+      "/dashboard",
+      "/chat",
+      "/function/schedules",
+      "/function/commands",
+      "/function/llm-records",
+      "/function/sync",
+      "/function/workspace",
+      "/system/agents",
+      "/system/mcp",
+      "/system/skills",
+      "/system/tools",
+      "/system/notify",
+      "/system/intercept/assets",
+      "/system/intercept/approvals",
+    ];
+    if (retired.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
+      router.replace("/workbench");
+    }
+  }, [pathname, router]);
   React.useEffect(() => {
     if (auth.getToken()) {
       setAuthed(true);
