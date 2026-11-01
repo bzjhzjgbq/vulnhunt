@@ -23,6 +23,7 @@ import {
   Sparkles,
   Target,
   Terminal,
+  Wallet,
   Wrench,
 } from "lucide-react";
 
@@ -73,6 +74,7 @@ export const sidebarItems: NavGroup[] = [
       { id: "chat", title: "对话", url: "/chat", icon: MessageSquare },
       { id: "tasks", title: "任务", url: "/function/tasks", icon: Target },
       { id: "src-programs", title: "SRC 平台库", url: "/function/src", icon: Crosshair },
+      { id: "bounty", title: "赏金台账", url: "/function/bounty", icon: Wallet },
       { id: "schedules", title: "计划任务", url: "/function/schedules", icon: CalendarClock },
       { id: "findings", title: "发现", url: "/function/findings", icon: Bug },
       { id: "traffic", title: "流量", url: "/function/traffic", icon: Activity },

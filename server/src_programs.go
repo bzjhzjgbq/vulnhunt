@@ -7,12 +7,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Autumn-27/artex/db"
+	"golang.org/x/net/publicsuffix"
 )
 
 // SRC bounty catalog: browse the public SRC index, then turn one program into an
@@ -194,4 +197,182 @@ func inferScopeKind(value string) string {
 		return "ip"
 	}
 	return "root_domain"
+}
+
+// ---- scope candidates -------------------------------------------------------
+
+var scopeDomainRe = regexp.MustCompile(`(?i)\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}\b`)
+var scopeCIDRRe = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}/\d{1,2}\b`)
+var scopeURLRe = regexp.MustCompile(`(?i)https?://[a-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+`)
+
+// scopeCommonTLD keeps the visible-text pass from treating JS property chains
+// (value.open, prize.id, donation.money) as hosts. URL hosts are not limited.
+var scopeCommonTLD = map[string]bool{
+	"com": true, "cn": true, "net": true, "org": true, "io": true, "co": true,
+	"me": true, "ai": true, "app": true, "dev": true, "cloud": true, "tech": true,
+	"top": true, "xyz": true, "info": true, "biz": true, "site": true, "online": true,
+	"shop": true, "store": true, "vip": true, "cc": true, "tv": true, "gov": true,
+	"edu": true, "mil": true, "us": true, "uk": true, "jp": true, "hk": true,
+	"tw": true, "sg": true, "kr": true, "de": true, "fr": true, "ru": true,
+	"in": true, "au": true, "ca": true, "br": true, "nl": true, "se": true,
+	"no": true, "fi": true, "dk": true, "it": true, "es": true, "pl": true,
+	"tr": true, "il": true, "ae": true, "sa": true, "my": true, "th": true,
+	"vn": true, "ph": true, "nz": true, "za": true, "mx": true, "ar": true,
+	"cl": true,
+}
+
+var scopeNoiseDomains = map[string]bool{
+	"w3.org": true, "google.com": true, "googleapis.com": true, "gstatic.com": true,
+	"cloudflare.com": true, "jsdelivr.net": true, "github.com": true, "githubusercontent.com": true,
+	"twitter.com": true, "x.com": true, "facebook.com": true, "youtube.com": true,
+	"beian.miit.gov.cn": true, "miit.gov.cn": true, "aliyun.com": true, "qq.com": true,
+	"baidu.com": true, "bootcss.com": true, "jquery.com": true, "fontawesome.com": true,
+	"w3schools.com": true, "mozilla.org": true, "schema.org": true, "apache.org": true,
+	"nginx.org": true, "openssl.org": true, "windows.net": true, "microsoft.com": true,
+}
+
+var scopeFileExt = map[string]bool{
+	"png": true, "jpg": true, "jpeg": true, "gif": true, "svg": true, "webp": true,
+	"css": true, "js": true, "html": true, "htm": true, "php": true, "asp": true,
+	"aspx": true, "jsp": true, "json": true, "xml": true, "txt": true, "pdf": true,
+	"zip": true, "woff": true, "woff2": true, "ttf": true, "ico": true, "map": true,
+}
+
+// srcProgramScopeCandidates fetches the program's own public page and extracts
+// candidate domains / CIDRs for the launch dialog. It is a reading aid: the user
+// still edits and confirms the list, and only the program page is fetched.
+func (s *Server) srcProgramScopeCandidates(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeErr(w, 400, "bad program id")
+		return
+	}
+	program, err := s.m.pg.GetSRCProgram(r.Context(), id)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	if program == nil || program.TargetURL == "" {
+		writeErr(w, 404, "program has no target url")
+		return
+	}
+	if !safePublicURL(program.TargetURL) {
+		writeErr(w, 400, "只允许抓取公开的 http(s) 页面")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, program.TargetURL, nil)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; ARTEX-SRC/1.0)")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeErr(w, 502, "抓取项目页失败: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		writeErr(w, 502, fmt.Sprintf("项目页返回 %d", resp.StatusCode))
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		writeErr(w, 502, err.Error())
+		return
+	}
+	candidates := extractScopeCandidates(string(body))
+	writeJSON(w, 200, map[string]any{
+		"program_id": program.ID,
+		"source":     program.TargetURL,
+		"candidates": candidates,
+	})
+}
+
+type scopeCandidate struct {
+	Value string `json:"value"`
+	Kind  string `json:"kind"`
+}
+
+// extractScopeCandidates pulls deduplicated domains and CIDRs out of a page.
+// Noise (asset hosts, standards bodies, CDNs) is filtered; the result is capped so
+// the dialog stays usable.
+func extractScopeCandidates(text string) []scopeCandidate {
+	seen := map[string]bool{}
+	out := make([]scopeCandidate, 0, 64)
+	addRoot := func(raw string) bool {
+		d := strings.ToLower(strings.TrimSuffix(raw, "."))
+		if len(d) > 253 || d == "" || scopeNoiseDomains[d] {
+			return len(out) >= 100
+		}
+		if labels := strings.Split(d, "."); scopeFileExt[labels[len(labels)-1]] {
+			return len(out) >= 100
+		}
+		if _, icann := publicsuffix.PublicSuffix(d); !icann {
+			return len(out) >= 100
+		}
+		root, err := publicsuffix.EffectiveTLDPlusOne(d)
+		if err != nil || scopeNoiseDomains[root] || seen[root] {
+			return len(out) >= 100
+		}
+		seen[root] = true
+		out = append(out, scopeCandidate{Value: root, Kind: "root_domain"})
+		return len(out) >= 100
+	}
+
+	for _, m := range scopeCIDRRe.FindAllString(text, 200) {
+		if _, _, err := net.ParseCIDR(m); err != nil || seen[m] {
+			continue
+		}
+		seen[m] = true
+		out = append(out, scopeCandidate{Value: m, Kind: "cidr"})
+		if len(out) >= 100 {
+			return out
+		}
+	}
+
+	// Pass 1: real URL hosts (src/href). These are trustworthy.
+	for _, m := range scopeURLRe.FindAllString(text, 2000) {
+		u, err := url.Parse(m)
+		if err != nil || u.Hostname() == "" {
+			continue
+		}
+		if addRoot(u.Hostname()) {
+			return out
+		}
+	}
+	// Pass 2: visible-text domains, limited to common TLDs. JS property chains
+	// (value.open, prize.id) are excluded by this allowlist.
+	for _, m := range scopeDomainRe.FindAllString(text, 4000) {
+		d := strings.ToLower(strings.TrimSuffix(m, "."))
+		labels := strings.Split(d, ".")
+		if !scopeCommonTLD[labels[len(labels)-1]] {
+			continue
+		}
+		if addRoot(d) {
+			break
+		}
+	}
+	return out
+}
+
+// safePublicURL rejects non-http(s) and private/loopback destinations, so a
+// tampered catalog row cannot turn this endpoint into an SSRF probe.
+func safePublicURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return false
+	}
+	ips, err := net.LookupIP(u.Hostname())
+	if err != nil || len(ips) == 0 {
+		return false
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
+			return false
+		}
+	}
+	return true
 }

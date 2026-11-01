@@ -1653,3 +1653,28 @@ CREATE TABLE IF NOT EXISTS src_programs (
 );
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS src_program_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_tasks_src_program ON tasks(src_program_id) WHERE src_program_id IS NOT NULL;
+
+-- §Bounty ledger: one submission row per (finding, platform) attempt.
+-- A finding can be submitted to several SRCs; the ledger tracks the platform's
+-- verdict and the money, independently of the internal triage status.
+CREATE TABLE IF NOT EXISTS bounty_submissions (
+    id            BIGSERIAL PRIMARY KEY,
+    finding_id    BIGINT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    program_id    BIGINT,
+    platform      TEXT NOT NULL DEFAULT '',
+    external_id   TEXT NOT NULL DEFAULT '',
+    status        TEXT NOT NULL DEFAULT 'submitted'
+                  CHECK (status IN ('submitted','accepted','rejected','duplicate','paid','withdrawn')),
+    severity      TEXT NOT NULL DEFAULT '',
+    amount_cents  BIGINT NOT NULL DEFAULT 0 CHECK (amount_cents >= 0),
+    currency      TEXT NOT NULL DEFAULT 'CNY',
+    submitted_at  TIMESTAMPTZ,
+    decided_at    TIMESTAMPTZ,
+    paid_at       TIMESTAMPTZ,
+    note          TEXT NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_bounty_finding ON bounty_submissions(finding_id);
+CREATE INDEX IF NOT EXISTS idx_bounty_program ON bounty_submissions(program_id);
+CREATE INDEX IF NOT EXISTS idx_bounty_status ON bounty_submissions(status);

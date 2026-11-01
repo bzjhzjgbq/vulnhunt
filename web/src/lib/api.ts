@@ -85,6 +85,9 @@ import type {
   SkillCall,
   SkillItem,
   SRCProgram,
+  BountySubmission,
+  BountySummary,
+  ScopeCandidate,
   SSProject,
   SSTask,
   Stats,
@@ -475,6 +478,28 @@ export const api = {
       `/src/programs/${id}/launch`,
       body,
     ),
+  srcScopeCandidates: (id: number) =>
+    post<{ program_id: number; source: string; candidates: ScopeCandidate[] }>(
+      `/src/programs/${id}/scope-candidates`,
+      {},
+    ),
+
+  // ---- 赏金台账 ----
+  bountySubmissions: (params?: { finding_id?: number; program_id?: number; status?: string }) => {
+    const p = new URLSearchParams();
+    if (params?.finding_id) p.set("finding_id", String(params.finding_id));
+    if (params?.program_id) p.set("program_id", String(params.program_id));
+    if (params?.status) p.set("status", params.status);
+    const qs = p.toString();
+    return get<{ items: BountySubmission[] | null; total: number }>(
+      `/bounty/submissions${qs ? `?${qs}` : ""}`,
+    ).then((r) => ({ items: arr(r.items), total: r.total }));
+  },
+  bountySummary: () => get<BountySummary>("/bounty/summary"),
+  createBounty: (body: Partial<BountySubmission>) => post<BountySubmission>("/bounty/submissions", body),
+  updateBounty: (id: number, body: Partial<BountySubmission>) =>
+    patch<BountySubmission>(`/bounty/submissions/${id}`, body),
+  deleteBounty: (id: number) => del<{ ok: boolean }>(`/bounty/submissions/${id}`),
 
   // ---- 任务摘要（总览顶部）----
   // 一次拿到目标/意图状态计数/在跑意图/最近 blocked/最近发现，用于快速定位卡点。
@@ -705,9 +730,11 @@ export const api = {
     includeOriginals?: boolean;
     consolidated?: boolean;
     clean?: boolean;
+    template?: string;
   }) => {
     const p = new URLSearchParams({ format: opts.format, scope: opts.scope });
     p.set("mode", opts.consolidated === false ? "raw" : "consolidated");
+    if (opts.template) p.set("template", opts.template);
     p.set("include_originals", String(opts.includeOriginals ?? false));
     p.set("clean", opts.clean ? "1" : "0");
     if (opts.scope === "selected") {
