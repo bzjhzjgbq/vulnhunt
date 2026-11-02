@@ -453,7 +453,9 @@ func TestFindingTrafficUTF8SegmentsAndInheritedWrites(t *testing.T) {
 	if _, err = s.m.traffic.DeleteHost("evidence.local"); err != nil {
 		t.Fatal(err)
 	}
-	result, err := s.toolUpdateFindingReport().Call(ctx, json.RawMessage(fmt.Sprintf(`{"finding_id":%d,"evidence_version":1,"report":"## 证据报告\n\n证据 #%d：已验证完整请求响应"}`, f.NodeID, list.Bindings[0].ID)), nil)
+	report := compliantFindingReport("证据报告", fmt.Sprintf("证据 #%d：已验证完整请求响应", list.Bindings[0].ID))
+	payload, _ := json.Marshal(map[string]any{"finding_id": f.NodeID, "evidence_version": 1, "report": report})
+	result, err := s.toolUpdateFindingReport().Call(ctx, payload, nil)
 	if err != nil || result.IsError {
 		t.Fatal(result, err)
 	}

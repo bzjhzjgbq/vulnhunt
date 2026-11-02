@@ -11,6 +11,7 @@ import (
 
 	"vulnhunt/agent"
 	"vulnhunt/db"
+	"vulnhunt/report"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -425,7 +426,7 @@ func (s *Server) toolGetTaskNodeDetail() actool.CoreTool {
 // task-agnostic, so this host tool needs no task_id / exploration store.
 func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 	return wrTool("update_finding_report",
-		"为已登记的漏洞写入/更新【详细报告】(Markdown 全文,整段覆盖旧内容)。finding_id 传 report_finding 返回的那个 id(\"finding recorded: <id>\" 里的数字)。报告建议包含:漏洞概述、影响与危害、复现步骤、证据/PoC、修复建议。",
+		"为已登记的漏洞写入/更新【详细报告】(Markdown 全文,整段覆盖旧内容)。finding_id 传 report_finding 返回的那个 id(\"finding recorded: <id>\" 里的数字)。报告必须严格符合固定 6 段结构，缺段会被拒收：# 标题 / - 漏洞等级 / ## 一句话结论 / ## 成立前提 / ## 关键动作 / ## 影响范围。",
 		objSchema(map[string]any{
 			"finding_id":       map[string]any{"type": "integer", "description": "目标漏洞 id(report_finding 返回的 id)"},
 			"report":           strParam("详细报告全文,Markdown 格式"),
@@ -450,6 +451,9 @@ func (s *Server) toolUpdateFindingReport() actool.CoreTool {
 				if err := s.checkCaseReviewScope(ctx, "update_finding_report", findingCaseRequest{FindingID: json.RawMessage(i64s(fid))}); err != nil {
 					return actool.Errorf(err.Error()), nil
 				}
+			}
+			if missing := report.ValidateFindingReport(a.Report); len(missing) > 0 {
+				return actool.Errorf(fmt.Sprintf("报告不符合固定 6 段结构，缺少：[%s]。请按「# 标题 / - 漏洞等级 / ## 一句话结论 / ## 成立前提 / ## 关键动作 / ## 影响范围」重写后重新保存（不合规的报告不入库）", strings.Join(missing, "、"))), nil
 			}
 			n, err := s.m.pg.SetFindingReportVersionByNodeID(ctx, nodeID, a.Report, a.EvidenceVersion)
 			if err != nil {

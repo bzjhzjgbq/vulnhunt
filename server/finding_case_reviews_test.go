@@ -145,7 +145,7 @@ func TestFindingCaseReviewProtectsOriginalToolWrites(t *testing.T) {
 		t.Fatal("original changed")
 	}
 	// Normal reporting is still able to write its own standalone report.
-	workflowCall(t, context.Background(), s.toolUpdateFindingReport(), map[string]any{"finding_id": f.NodeID, "report": "normal report", "evidence_version": original.EvidenceVersion}, false)
+	workflowCall(t, context.Background(), s.toolUpdateFindingReport(), map[string]any{"finding_id": f.NodeID, "report": compliantFindingReport("正常报告", "正常上报的独立报告"), "evidence_version": original.EvidenceVersion}, false)
 }
 
 func TestFindingCaseReviewSuggestionNeedsSavedSuggestion(t *testing.T) {
