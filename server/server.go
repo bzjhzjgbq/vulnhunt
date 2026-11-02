@@ -867,6 +867,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/exploration/findings/{id}/retests", s.startFindingRetest)
 	mux.HandleFunc("PATCH /api/exploration/findings/{id}", s.patchFinding)
 	mux.HandleFunc("DELETE /api/exploration/findings/{id}", s.deleteFinding)
+	mux.HandleFunc("GET /api/exploration/findings/{id}/revisions", s.listFindingRevisions)
+	mux.HandleFunc("GET /api/exploration/findings/{id}/revisions/{version}", s.getFindingRevision)
+	mux.HandleFunc("PUT /api/exploration/findings/{id}/report", s.putFindingReport)
+	mux.HandleFunc("GET /api/exploration/findings/{id}/submission", s.findingSubmission)
+	mux.HandleFunc("GET /api/exploration/findings/{id}/evidence", s.listFindingEvidence)
+	mux.HandleFunc("POST /api/exploration/findings/{id}/evidence", s.addFindingEvidence)
+	mux.HandleFunc("DELETE /api/exploration/findings/{id}/evidence/{evidenceID}", s.deleteFindingEvidence)
 	mux.HandleFunc("GET /api/exploration/intents", s.intents)
 	mux.HandleFunc("GET /api/exploration/graph", s.explorationGraph)
 	mux.HandleFunc("GET /api/exploration/nodes", s.explorationNodes)
@@ -893,6 +900,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/commands", s.pgListCommands)
 	mux.HandleFunc("GET /api/commands/stats", s.pgToolStats) // 按工具聚合调用次数
 	mux.HandleFunc("GET /api/llm/records", s.pgListLLMRecords)
+	mux.HandleFunc("GET /api/llm/usage", s.llmUsageReport)
 	mux.HandleFunc("DELETE /api/llm/records", s.pgDeleteLLMRecords)
 	mux.HandleFunc("GET /api/llm/records/tasks", s.pgLLMTasks)
 	mux.HandleFunc("GET /api/llm/records/by-model", s.pgTokenByModel) // 按模型聚合本任务 token 用量

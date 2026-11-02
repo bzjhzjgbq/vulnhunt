@@ -25,7 +25,10 @@ import { api } from "@/lib/api";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
+import { FindingEvidencePanel } from "./evidence-panel";
 import { FindingLineageView } from "./lineage";
+import { FindingReportEditor } from "./report-editor";
+import { SubmissionCopy } from "./submission-copy";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 const FINDING_STATUSES: FindingStatus[] = [
@@ -62,6 +65,7 @@ function FindingDetailInner() {
   const [finding, setFinding] = React.useState<Finding | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const [tab, setTab] = React.useState("overview");
+  const [editorOpen, setEditorOpen] = React.useState(false);
 
   const load = React.useCallback(() => {
     if (!id) {
@@ -128,6 +132,7 @@ function FindingDetailInner() {
   }
 
   const title = finding.name || finding.vulnclass || "未分类";
+  const findingHandle = finding.finding_id ? finding.finding_id : finding.id;
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col gap-0">
@@ -197,6 +202,7 @@ function FindingDetailInner() {
                   )}
                 </CardContent>
               </Card>
+              <FindingEvidencePanel findingId={findingHandle} readOnly={Boolean(finding.inherited)} />
               <FindingTrafficPanel
                 key={`traffic:${id}`}
                 findingId={id}
@@ -206,9 +212,17 @@ function FindingDetailInner() {
               />
               {/* 证据下方：详细报告(Markdown 渲染) */}
               <Card>
-                <CardHeader className="flex-row items-center justify-between">
+                <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm">详细报告</CardTitle>
-                  {finding.report && <CopyButton text={finding.report} successMessage="已复制详细报告" />}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SubmissionCopy findingId={findingHandle} />
+                    {!finding.inherited && (
+                      <Button size="sm" variant="outline" onClick={() => setEditorOpen(true)}>
+                        编辑报告
+                      </Button>
+                    )}
+                    {finding.report && <CopyButton text={finding.report} successMessage="已复制详细报告" />}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {finding.report_stale ? (
@@ -333,6 +347,13 @@ function FindingDetailInner() {
               </CardContent>
             </Card>
           </div>
+          {editorOpen && (
+            <FindingReportEditor
+              finding={finding}
+              onClose={() => setEditorOpen(false)}
+              onSaved={(updated) => setFinding(updated)}
+            />
+          )}
         </TabsContent>
 
         {/* 链路图：从任务初始节点回溯到本漏洞节点的攻击链路 */}

@@ -465,12 +465,21 @@ func (d *DB) SetFindingReportVersionByNodeID(ctx context.Context, nodeID int64, 
 		if err := LockFindingEvidenceTx(tx, id, version); err != nil {
 			return err
 		}
-		res, err := tx.Exec(`UPDATE findings SET report=$2,report_evidence_version=COALESCE($3::bigint,CASE WHEN evidence_version=0 THEN 0 ELSE -1 END) WHERE id=$1`, id, report, version)
+		var current int64
+		var evidence, summary string
+		if err := tx.QueryRow(`SELECT content_version,evidence,summary FROM findings WHERE id=$1 FOR UPDATE`, id).Scan(&current, &evidence, &summary); err != nil {
+			return err
+		}
+		next := current + 1
+		res, err := tx.Exec(`UPDATE findings SET report=$2,content_version=$3,report_evidence_version=COALESCE($4::bigint,CASE WHEN evidence_version=0 THEN 0 ELSE -1 END) WHERE id=$1`, id, report, next, version)
 		if err != nil {
 			return err
 		}
 		n, err = res.RowsAffected()
-		return err
+		if err != nil || n == 0 {
+			return err
+		}
+		return insertFindingRevisionTx(ctx, tx, id, next, report, evidence, summary, "agent update_finding_report", "agent")
 	})
 	return
 }

@@ -514,6 +514,7 @@ export interface Finding {
   traffic_count?: number;
   evidence_version?: number;
   report_evidence_version?: number;
+  content_version?: number;
   report_stale?: boolean;
   id: string;
   finding_id?: string; // 独立 findings 表的行 id,状态更新的句柄(任务内旧节点可能缺失)
@@ -532,6 +533,32 @@ export interface Finding {
   inherited?: boolean;
   assets?: FindingAsset[];
   ts: string;
+}
+
+// FindingEvidence 是挂在漏洞上的结构化证据（命令输出/文件哈希/截图说明等）。
+export interface FindingEvidence {
+  id: number;
+  finding_id: number;
+  kind: string;
+  label: string;
+  content: string;
+  content_hash: string;
+  note: string;
+  author: string;
+  created_at: string;
+}
+
+// FindingRevision 是一次报告/证据/摘要保存的快照。
+export interface FindingRevision {
+  id: number;
+  finding_id: number;
+  version: number;
+  report: string;
+  evidence: string;
+  summary: string;
+  reason: string;
+  author: string;
+  created_at: string;
 }
 
 // FindingsPage 是发现列表的服务端分页响应。
@@ -823,6 +850,38 @@ export interface DailyTokenBucket {
   output_tokens: number;
   cache_read_tokens: number;
   cache_write_tokens: number;
+}
+
+// LLM usage dashboard (GET /api/llm/usage) — from the llm_usage ledger.
+export interface LLMUsageSummary {
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read: number;
+  cache_write: number;
+  errors: number;
+  avg_latency_ms: number;
+}
+
+export interface LLMUsageBucket {
+  key: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read: number;
+  cache_write: number;
+  errors: number;
+  avg_latency_ms: number;
+}
+
+export interface LLMUsageReport {
+  from: string;
+  to: string;
+  summary: LLMUsageSummary;
+  daily: LLMUsageBucket[];
+  by_model: LLMUsageBucket[];
+  by_profile: LLMUsageBucket[];
+  by_task: LLMUsageBucket[];
 }
 
 // Per-worker token usage (GET /api/exploration/tokens).

@@ -38,6 +38,9 @@ import type {
   ExplorationNodePage,
   ExplorationNodeQuery,
   Finding,
+  FindingEvidence,
+  FindingRevision,
+  LLMUsageReport,
   FindingAssetTree,
   FindingCaseDetail,
   FindingCasePage,
@@ -808,6 +811,28 @@ export const api = {
     get<Finding>(
       `/exploration/findings/${id}${contextTaskId ? `?context_task=${encodeURIComponent(contextTaskId)}` : ""}`,
     ),
+  // 人工编辑报告/证据/摘要；content_version 是乐观锁，冲突时后端返回 409。
+  saveFindingReport: (
+    id: string,
+    body: { report: string; evidence: string; summary: string; content_version: number; reason?: string },
+  ) => put<{ finding: Finding; revision: FindingRevision }>(`/exploration/findings/${id}/report`, body),
+  findingRevisions: (id: string) =>
+    get<{ revisions: FindingRevision[] }>(`/exploration/findings/${id}/revisions`).then((r) => arr(r.revisions)),
+  findingRevision: (id: string, version: number) =>
+    get<FindingRevision>(`/exploration/findings/${id}/revisions/${version}`),
+  // 平台提交稿：butian | vulbox | generic。
+  findingSubmission: (id: string, template: "butian" | "vulbox" | "generic") =>
+    get<{ template: string; markdown: string; filename: string }>(
+      `/exploration/findings/${id}/submission?template=${template}`,
+    ),
+  findingEvidence: (id: string) =>
+    get<{ evidence: FindingEvidence[] }>(`/exploration/findings/${id}/evidence`).then((r) => arr(r.evidence)),
+  addFindingEvidence: (
+    id: string,
+    body: { kind: string; label: string; content: string; note: string },
+  ) => post<{ evidence: FindingEvidence }>(`/exploration/findings/${id}/evidence`, body),
+  deleteFindingEvidence: (id: string, evidenceId: number) =>
+    del<{ deleted: boolean; id: number }>(`/exploration/findings/${id}/evidence/${evidenceId}`),
   findingTraffic: (id: string, contextTask?: string) =>
     get<FindingTraffic>(
       `/exploration/findings/${id}/traffic${contextTask ? `?context_task=${encodeURIComponent(contextTask)}` : ""}`,
@@ -909,6 +934,7 @@ export const api = {
       total: r.total,
     })),
   tokenDaily: (days = 30) => get<DailyTokenBucket[]>(`/tokens/daily?days=${days}`).then(arr),
+  llmUsage: (days = 30) => get<LLMUsageReport>(`/llm/usage?days=${days}`),
   conversationTokens: () =>
     get<ConvTokenSummary[]>("/tokens/conversations")
       .then(arr)
