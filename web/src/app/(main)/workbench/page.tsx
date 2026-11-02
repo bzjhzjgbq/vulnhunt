@@ -136,7 +136,9 @@ export default function WorkbenchPage() {
                   href={`/function/tasks/detail?id=${encodeURIComponent(t.id)}`}
                   className="hover:bg-muted/50 flex items-center gap-2 rounded-md px-2 py-2"
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm">{t.name || t.description}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm" title={t.name || t.description}>
+                    {t.name || t.description}
+                  </span>
                   <Badge variant={t.status === "paused" ? "secondary" : "default"} className="text-[10px]">
                     {t.status === "paused" ? "已暂停" : "在测"}
                   </Badge>
@@ -173,7 +175,9 @@ export default function WorkbenchPage() {
                   <span className={`rounded px-1.5 py-0.5 text-[10px] ${sevClass(f.severity)}`}>
                     {severityCN(f.severity)}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-sm">{f.name || f.vulnclass}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm" title={f.name || f.vulnclass}>
+                    {f.name || f.vulnclass}
+                  </span>
                   <span className="text-muted-foreground shrink-0 text-xs">{f.ts?.slice(0, 10)}</span>
                 </Link>
               ))
@@ -197,7 +201,9 @@ export default function WorkbenchPage() {
                 href="/function/src"
                 className="hover:bg-muted/50 flex items-center gap-2 rounded-md px-2 py-2"
               >
-                <span className="min-w-0 flex-1 truncate text-sm">{p.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm" title={p.name}>
+                  {p.name}
+                </span>
                 {p.analysis_has_data ? (
                   <span className="text-emerald-600 dark:text-emerald-400 text-[10px]">有赏金数据</span>
                 ) : null}
@@ -222,7 +228,12 @@ export default function WorkbenchPage() {
             ) : (
               paidRecent.map((s) => (
                 <div key={s.id} className="flex items-center gap-2 rounded-md px-2 py-2 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{s.finding_name || `Finding #${s.finding_id}`}</span>
+                  <span
+                    className="min-w-0 flex-1 truncate"
+                    title={s.finding_name || `Finding #${s.finding_id}`}
+                  >
+                    {s.finding_name || `Finding #${s.finding_id}`}
+                  </span>
                   <span className="shrink-0 text-xs text-muted-foreground">{s.platform || s.program_name}</span>
                   <span className="shrink-0 font-medium tabular-nums">{money(s.amount_cents)}</span>
                 </div>
