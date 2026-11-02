@@ -26,6 +26,8 @@ import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
 import { FindingLineageView } from "./lineage";
+import { FindingReportEditor } from "./report-editor";
+import { SubmissionCopy } from "./submission-copy";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 const FINDING_STATUSES: FindingStatus[] = [
@@ -62,6 +64,7 @@ function FindingDetailInner() {
   const [finding, setFinding] = React.useState<Finding | null>(null);
   const [loaded, setLoaded] = React.useState(false);
   const [tab, setTab] = React.useState("overview");
+  const [editorOpen, setEditorOpen] = React.useState(false);
 
   const load = React.useCallback(() => {
     if (!id) {
@@ -206,9 +209,17 @@ function FindingDetailInner() {
               />
               {/* 证据下方：详细报告(Markdown 渲染) */}
               <Card>
-                <CardHeader className="flex-row items-center justify-between">
+                <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm">详细报告</CardTitle>
-                  {finding.report && <CopyButton text={finding.report} successMessage="已复制详细报告" />}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SubmissionCopy findingId={finding.finding_id || finding.id} />
+                    {!finding.inherited && (
+                      <Button size="sm" variant="outline" onClick={() => setEditorOpen(true)}>
+                        编辑报告
+                      </Button>
+                    )}
+                    {finding.report && <CopyButton text={finding.report} successMessage="已复制详细报告" />}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {finding.report_stale ? (
@@ -333,6 +344,13 @@ function FindingDetailInner() {
               </CardContent>
             </Card>
           </div>
+          {editorOpen && (
+            <FindingReportEditor
+              finding={finding}
+              onClose={() => setEditorOpen(false)}
+              onSaved={(updated) => setFinding(updated)}
+            />
+          )}
         </TabsContent>
 
         {/* 链路图：从任务初始节点回溯到本漏洞节点的攻击链路 */}

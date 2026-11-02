@@ -514,6 +514,7 @@ export interface Finding {
   traffic_count?: number;
   evidence_version?: number;
   report_evidence_version?: number;
+  content_version?: number;
   report_stale?: boolean;
   id: string;
   finding_id?: string; // 独立 findings 表的行 id,状态更新的句柄(任务内旧节点可能缺失)
@@ -532,6 +533,19 @@ export interface Finding {
   inherited?: boolean;
   assets?: FindingAsset[];
   ts: string;
+}
+
+// FindingRevision 是一次报告/证据/摘要保存的快照。
+export interface FindingRevision {
+  id: number;
+  finding_id: number;
+  version: number;
+  report: string;
+  evidence: string;
+  summary: string;
+  reason: string;
+  author: string;
+  created_at: string;
 }
 
 // FindingsPage 是发现列表的服务端分页响应。

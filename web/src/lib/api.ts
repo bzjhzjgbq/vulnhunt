@@ -38,6 +38,7 @@ import type {
   ExplorationNodePage,
   ExplorationNodeQuery,
   Finding,
+  FindingRevision,
   FindingAssetTree,
   FindingCaseDetail,
   FindingCasePage,
@@ -807,6 +808,20 @@ export const api = {
   getFinding: (id: string, contextTaskId?: string) =>
     get<Finding>(
       `/exploration/findings/${id}${contextTaskId ? `?context_task=${encodeURIComponent(contextTaskId)}` : ""}`,
+    ),
+  // 人工编辑报告/证据/摘要；content_version 是乐观锁，冲突时后端返回 409。
+  saveFindingReport: (
+    id: string,
+    body: { report: string; evidence: string; summary: string; content_version: number; reason?: string },
+  ) => put<{ finding: Finding; revision: FindingRevision }>(`/exploration/findings/${id}/report`, body),
+  findingRevisions: (id: string) =>
+    get<{ revisions: FindingRevision[] }>(`/exploration/findings/${id}/revisions`).then((r) => arr(r.revisions)),
+  findingRevision: (id: string, version: number) =>
+    get<FindingRevision>(`/exploration/findings/${id}/revisions/${version}`),
+  // 平台提交稿：butian | vulbox | generic。
+  findingSubmission: (id: string, template: "butian" | "vulbox" | "generic") =>
+    get<{ template: string; markdown: string; filename: string }>(
+      `/exploration/findings/${id}/submission?template=${template}`,
     ),
   findingTraffic: (id: string, contextTask?: string) =>
     get<FindingTraffic>(

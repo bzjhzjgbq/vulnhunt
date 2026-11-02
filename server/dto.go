@@ -315,6 +315,7 @@ type FindingDTO struct {
 	TrafficCount          int                        `json:"traffic_count"`
 	EvidenceVersion       int64                      `json:"evidence_version"`
 	ReportEvidenceVersion int64                      `json:"report_evidence_version"`
+	ContentVersion        int64                      `json:"content_version"`
 	ReportStale           bool                       `json:"report_stale"`
 	TrafficBindings       []db.FindingTrafficBinding `json:"traffic_bindings,omitempty"`
 
@@ -456,7 +457,8 @@ func findingFromDB(f *db.DBFinding, assets map[int64]*db.Asset) FindingDTO {
 		ID:           i64s(f.ID),
 		FindingID:    i64s(f.ID),
 		TrafficCount: f.TrafficCount, EvidenceVersion: f.EvidenceVersion, ReportEvidenceVersion: f.ReportEvidenceVersion,
-		ReportStale: f.Report != "" && f.EvidenceVersion != f.ReportEvidenceVersion, TrafficBindings: f.TrafficBindings,
+		ContentVersion: f.ContentVersion,
+		ReportStale:    f.Report != "" && f.EvidenceVersion != f.ReportEvidenceVersion, TrafficBindings: f.TrafficBindings,
 		VulnClass: f.VulnClass,
 		Name:      f.Name,
 		Severity:  f.Severity,

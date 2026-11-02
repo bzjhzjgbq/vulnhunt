@@ -1169,6 +1169,24 @@ CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status, created_at DE
 -- 「按资产」视图靠 asset_ids @> '[<id>]' 反查发现,没有这个 GIN 索引就是全表扫。
 CREATE INDEX IF NOT EXISTS idx_findings_asset_ids ON findings USING GIN(asset_ids jsonb_path_ops);
 
+-- 报告内容的人工/Agent 编辑版本：content_version 是乐观锁，每次保存 +1。
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS content_version BIGINT NOT NULL DEFAULT 0;
+
+-- 每次保存 report/evidence/summary 追加一行，供详情页查看和回滚。
+CREATE TABLE IF NOT EXISTS finding_report_versions (
+    id          BIGSERIAL PRIMARY KEY,
+    finding_id  BIGINT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    version     BIGINT NOT NULL,
+    report      TEXT NOT NULL DEFAULT '',
+    evidence    TEXT NOT NULL DEFAULT '',
+    summary     TEXT NOT NULL DEFAULT '',
+    reason      TEXT NOT NULL DEFAULT '',
+    author      TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (finding_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_finding_report_versions ON finding_report_versions(finding_id, version DESC);
+
 -- 手动复测属于独立会话；结论与原漏洞处置状态分开保存。
 CREATE TABLE IF NOT EXISTS finding_retests (
     id BIGSERIAL PRIMARY KEY,
