@@ -44,8 +44,7 @@ jobs:
       # 存量测试在全新库上已有若干失败（如 TestStandardForTaskPicksPlatform、
       # TestFindingGroupsAndUnassignedPaging），先只报告不阻塞；修完后去掉
       # continue-on-error，改为真正的门禁。
-      - name: go test (non-blocking, existing debt)
-        continue-on-error: true
+      - name: go test
         # -p 1: db/agent/server share one test database and the engine keeps
         # background goroutines alive; running packages concurrently makes the
         # suite deadlock or race on TempDir cleanup.
