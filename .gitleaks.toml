@@ -1,0 +1,23 @@
+# gitleaks 配置：默认规则 + 仓库内已知的公开占位符。
+#
+# 这里只放行「文档/测试/CI 示例」里的假值；真实 API Key、Token、私钥、
+# 带真实密码的连接串仍然会被拦截。新增放行项前先确认它不是凭据。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and test fixtures intentionally committed"
+paths = [
+  # 掩码/脱敏测试本身使用哨兵值；mock 数据是纯演示数据。
+  '''(^|/)notify/(mask|redact)_test\.go$''',
+  '''(^|/)server/notify_api_test\.go$''',
+  '''(^|/)web/src/lib/mock/data\.ts$''',
+]
+regexes = [
+  # README、compose、CI、测试夹具里的示例数据库 URL
+  '''postgres(ql)?://(user|u|vulnhunt|artex):(pass|p|vulnhunt|changeme|change-me|password|\$\{[^}]+\})@''',
+  '''postgres(ql)?://[^:\s]+:\$\{[^}]+\}@''',
+  # 测试里的假 key，例如 sk-test-... / pool-test-key
+  '''sk-(test|dummy|fake|example)[-_A-Za-z0-9]*''',
+  '''(?i)(api[_-]?key|token|secret)\s*[:=]\s*['"]?(test|dummy|fake|example|placeholder|pool-test-key)''',
+]

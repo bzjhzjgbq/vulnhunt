@@ -77,3 +77,32 @@ Thumbs.db
 # 自动生成的报告与 PoC 产物（含浏览器 profile；需要留档时用 git add -f 单独加 .md）
 /reports-*/
 /darksec_concurrency_test/
+
+# 本地真实漏洞数据（厂商/接口/PII/真实资产），只在本机复现，绝不提交
+# 截图：真实漏洞清单、资产、发现、工作台
+/screenshots/vulnhunt/assets.png
+/screenshots/vulnhunt/bounty.png
+/screenshots/vulnhunt/findings.png
+/screenshots/vulnhunt/workbench.png
+# 厂商漏洞报告
+/奇安信_*.md
+/快猫科技_*.md
+/浙旅院_*.md
+/联想_*.md
+/金蝶_*.md
+/挖财_*.md
+# 研判、探测与 PoC 产物
+/findings-triage-*.md
+/finding_*_verification_report.md
+/findings_api_probe.json
+/technical_analysis_report.md
+/PRIORITY_SUBMISSIONS.md
+/debug-*.md
+/task-blockers-*.md
+/reproduce.sh
+/sign_poc.js
+/sms_test.py
+/mock_sms_server.py
+/launch-app.min.js
+/scripts/purge-old-artex.ps1
+/4…最多
