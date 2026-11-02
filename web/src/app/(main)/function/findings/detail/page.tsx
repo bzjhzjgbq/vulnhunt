@@ -25,6 +25,7 @@ import { api } from "@/lib/api";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
 
+import { FindingEvidencePanel } from "./evidence-panel";
 import { FindingLineageView } from "./lineage";
 import { FindingReportEditor } from "./report-editor";
 import { SubmissionCopy } from "./submission-copy";
@@ -131,6 +132,7 @@ function FindingDetailInner() {
   }
 
   const title = finding.name || finding.vulnclass || "未分类";
+  const findingHandle = finding.finding_id ? finding.finding_id : finding.id;
 
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex flex-1 flex-col gap-0">
@@ -200,6 +202,7 @@ function FindingDetailInner() {
                   )}
                 </CardContent>
               </Card>
+              <FindingEvidencePanel findingId={findingHandle} readOnly={Boolean(finding.inherited)} />
               <FindingTrafficPanel
                 key={`traffic:${id}`}
                 findingId={id}
@@ -212,7 +215,7 @@ function FindingDetailInner() {
                 <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm">详细报告</CardTitle>
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <SubmissionCopy findingId={finding.finding_id || finding.id} />
+                    <SubmissionCopy findingId={findingHandle} />
                     {!finding.inherited && (
                       <Button size="sm" variant="outline" onClick={() => setEditorOpen(true)}>
                         编辑报告

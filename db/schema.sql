@@ -1187,6 +1187,20 @@ CREATE TABLE IF NOT EXISTS finding_report_versions (
 );
 CREATE INDEX IF NOT EXISTS idx_finding_report_versions ON finding_report_versions(finding_id, version DESC);
 
+-- 结构化证据：不依赖 HTTP 流量捕获，命令输出/文件哈希/截图说明都可挂到漏洞上。
+CREATE TABLE IF NOT EXISTS finding_evidence (
+    id           BIGSERIAL PRIMARY KEY,
+    finding_id   BIGINT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL DEFAULT 'text', -- http | command | file | screenshot | text
+    label        TEXT NOT NULL DEFAULT '',
+    content      TEXT NOT NULL DEFAULT '',
+    content_hash TEXT NOT NULL DEFAULT '',
+    note         TEXT NOT NULL DEFAULT '',
+    author       TEXT NOT NULL DEFAULT '',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_finding_evidence ON finding_evidence(finding_id, created_at DESC);
+
 -- 手动复测属于独立会话；结论与原漏洞处置状态分开保存。
 CREATE TABLE IF NOT EXISTS finding_retests (
     id BIGSERIAL PRIMARY KEY,

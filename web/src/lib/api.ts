@@ -38,7 +38,9 @@ import type {
   ExplorationNodePage,
   ExplorationNodeQuery,
   Finding,
+  FindingEvidence,
   FindingRevision,
+  LLMUsageReport,
   FindingAssetTree,
   FindingCaseDetail,
   FindingCasePage,
@@ -823,6 +825,14 @@ export const api = {
     get<{ template: string; markdown: string; filename: string }>(
       `/exploration/findings/${id}/submission?template=${template}`,
     ),
+  findingEvidence: (id: string) =>
+    get<{ evidence: FindingEvidence[] }>(`/exploration/findings/${id}/evidence`).then((r) => arr(r.evidence)),
+  addFindingEvidence: (
+    id: string,
+    body: { kind: string; label: string; content: string; note: string },
+  ) => post<{ evidence: FindingEvidence }>(`/exploration/findings/${id}/evidence`, body),
+  deleteFindingEvidence: (id: string, evidenceId: number) =>
+    del<{ deleted: boolean; id: number }>(`/exploration/findings/${id}/evidence/${evidenceId}`),
   findingTraffic: (id: string, contextTask?: string) =>
     get<FindingTraffic>(
       `/exploration/findings/${id}/traffic${contextTask ? `?context_task=${encodeURIComponent(contextTask)}` : ""}`,
@@ -924,6 +934,7 @@ export const api = {
       total: r.total,
     })),
   tokenDaily: (days = 30) => get<DailyTokenBucket[]>(`/tokens/daily?days=${days}`).then(arr),
+  llmUsage: (days = 30) => get<LLMUsageReport>(`/llm/usage?days=${days}`),
   conversationTokens: () =>
     get<ConvTokenSummary[]>("/tokens/conversations")
       .then(arr)
