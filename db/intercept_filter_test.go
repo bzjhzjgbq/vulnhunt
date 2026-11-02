@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestInterceptApprovalFilters(t *testing.T) {
@@ -158,10 +159,19 @@ func TestInterceptApprovalFilters(t *testing.T) {
 	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != searchID {
 		t.Fatalf("id search total=%d rows=%d err=%v", total, len(rows), err)
 	}
+	from := time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02")
+	to := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
 	rows, total, err = d.ListTaskInterceptsPage(scope, 1, 20, InterceptApprovalFilter{
-		Search: "example.test", CreatedFrom: "2099-01-01", CreatedTo: "2099-01-01",
+		Search: "example.test", CreatedFrom: from, CreatedTo: to,
 	})
 	if err != nil || total != 1 || len(rows) != 1 || rows[0].ID != searchID {
 		t.Fatalf("date search total=%d rows=%d err=%v", total, len(rows), err)
+	}
+	// A range that ends before the row was created must exclude it.
+	rows, total, err = d.ListTaskInterceptsPage(scope, 1, 20, InterceptApprovalFilter{
+		Search: "example.test", CreatedFrom: "2000-01-01", CreatedTo: "2000-01-01",
+	})
+	if err != nil || total != 0 || len(rows) != 0 {
+		t.Fatalf("past date search total=%d rows=%d err=%v", total, len(rows), err)
 	}
 }

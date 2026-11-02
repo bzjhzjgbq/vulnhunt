@@ -265,14 +265,16 @@ export function FindingsTable({
                         href={`/function/findings/detail?id=${f.finding_id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="truncate font-medium hover:text-primary hover:underline"
-                        title="查看发现详情"
+                        title={f.name || f.vulnclass || "查看发现详情"}
                       >
                         {f.name || f.vulnclass || "未分类"}
                       </Link>
                     ) : (
                       <span className="truncate font-medium">{f.name || f.vulnclass || "未分类"}</span>
                     )}
-                    <span className="truncate text-xs text-muted-foreground">{f.summary}</span>
+                    <span className="truncate text-xs text-muted-foreground" title={f.summary}>
+                      {f.summary}
+                    </span>
                     {matchedIds && !matchedIds.includes(Number(f.finding_id)) ? (
                       <Badge variant="outline" className="w-fit">
                         未命中当前筛选

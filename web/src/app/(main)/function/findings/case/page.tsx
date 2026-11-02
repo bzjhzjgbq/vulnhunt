@@ -91,6 +91,18 @@ function CaseDetail() {
       setBusy(false);
     }
   }
+  if (!id) {
+    return (
+      <div className="flex min-w-0 flex-col gap-4">
+        <Alert>
+          <AlertDescription>未指定归并组，请从「发现」列表进入具体的归并组。</AlertDescription>
+        </Alert>
+        <Button asChild variant="outline" className="w-fit">
+          <Link href="/function/findings">返回漏洞列表</Link>
+        </Button>
+      </div>
+    );
+  }
   if (!data)
     return error ? (
       <Alert>

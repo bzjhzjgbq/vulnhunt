@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"vulnhunt/agent"
-	"vulnhunt/db"
-	"vulnhunt/intercept"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/jackc/pgx/v5/pgconn"
+	"vulnhunt/agent"
+	"vulnhunt/db"
+	"vulnhunt/intercept"
 )
 
 // isFKViolation reports whether err is a Postgres foreign-key violation (SQLSTATE
@@ -309,6 +309,21 @@ func (e *Engine) StopTask(taskID string) {
 	e.deleteMu.Lock()
 	e.deleting.Delete(taskID)
 	e.deleteMu.Unlock()
+}
+
+// StopAll stops every task runtime and waits for its goroutines. Shutdown paths
+// and tests that create a Server against a shared database use it so background
+// task writers are gone before the data directory is cleaned up.
+func (e *Engine) StopAll() {
+	e.runtimeMu.Lock()
+	ids := make([]string, 0, len(e.runtimes))
+	for id := range e.runtimes {
+		ids = append(ids, id)
+	}
+	e.runtimeMu.Unlock()
+	for _, id := range ids {
+		e.StopTask(id)
+	}
 }
 
 // cancelExec cancels a task's current per-task exec context (any in-flight

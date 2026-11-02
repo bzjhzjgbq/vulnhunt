@@ -413,7 +413,9 @@ function TaskDetailInner() {
             {controlLabel}
           </Button>
         </div>
-        <p className="truncate text-xs text-muted-foreground">{task.goal}</p>
+        <p className="line-clamp-2 text-xs text-muted-foreground" title={task.goal}>
+          {task.goal}
+        </p>
         {task.remark ? (
           <p className="truncate text-xs text-muted-foreground" title={task.remark}>
             备注：{task.remark}

@@ -5,6 +5,7 @@
     {
       "id": "butian",
       "name": "补天",
+      "match": ["补天", "butian"],
       "source": "https://www.butian.net/ (规则整理：NaClO-3/src-fleet)",
       "confidence": "verified",
       "min_severity": "medium",
@@ -63,6 +64,7 @@
     {
       "id": "vulbox",
       "name": "漏洞盒子",
+      "match": ["漏洞盒子", "vulbox"],
       "source": "https://www.vulbox.com/news/detail-212",
       "confidence": "verified",
       "min_severity": "medium",

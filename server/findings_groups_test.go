@@ -239,8 +239,8 @@ func TestDeepenFindingCreatesAuditedIntentAndRevivesTask(t *testing.T) {
 	default:
 	}
 
-	// The retained finding can no longer be deepened after its task and node are
-	// deleted; this must be a conflict rather than silently creating orphan work.
+	// DeleteTask removes its findings, so deepening one afterwards must 404
+	// rather than silently creating orphan work.
 	if err := m.pg.DeleteTask(taskID); err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestDeepenFindingCreatesAuditedIntentAndRevivesTask(t *testing.T) {
 	req.SetPathValue("id", strconv.FormatInt(findingID, 10))
 	rec = httptest.NewRecorder()
 	s.deepenFinding(rec, req)
-	if rec.Code != http.StatusConflict {
+	if rec.Code != http.StatusNotFound {
 		t.Fatalf("deleted origin status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }

@@ -39,6 +39,7 @@ func TestStandardForTaskPicksPlatform(t *testing.T) {
 		{&Task{Name: "Airbnb爱彼迎｜漏洞盒子SRC"}, "vulbox"},
 		{&Task{Name: "货讯通科技｜补天专属SRC"}, "butian"},
 		{&Task{Name: "OPPO安全应急响应中心｜漏洞盒子SRC"}, "vulbox"},
+		{&Task{Name: "Airbnb爱彼迎"}, "airbnb"},
 		{&Task{Name: "某个未收录的项目"}, "generic-vendor"},
 	}
 	for _, c := range cases {

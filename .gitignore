@@ -60,3 +60,20 @@ Thumbs.db
 /bench/
 /Dockerfile.bench
 /Dockerfile.bench.v2
+
+# 根目录本地构建产物与备份（可执行文件、一键更新的备份件）
+/*.exe
+/*.exe.*
+/*.exe~
+/*.bak-*
+
+# agent / 本地工作目录（含 node_modules、浏览器 profile 等大体积产物）
+/.artex-*/
+/.box-agent-scratch/
+/.dsh-acl-recovery/
+/.loomy-attachments/
+/.ohmyagent/
+
+# 自动生成的报告与 PoC 产物（含浏览器 profile；需要留档时用 git add -f 单独加 .md）
+/reports-*/
+/darksec_concurrency_test/

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -44,6 +45,50 @@ const errDataSourceUnavailable = "数据源暂时不可用，请稍后重试"
 // 打开后只做两件事：requireAuth 不再校验 JWT；authLogin 不再校验口令（仍然签发
 // 正常 JWT，前端 token 流转完全不变）。Basic Auth 是另一层，仍由系统设置控制。
 var noLogin = os.Getenv("VULNHUNT_NO_LOGIN") == "1"
+
+// isLoopbackRequest reports whether the TCP peer is on the loopback interface.
+// 只看连接本身，不信任 X-Forwarded-For：反向代理后的首次初始化请改用
+// ADMIN_PASSWORD 引导，否则代理会把所有请求伪装成本机来源。
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+// bootstrapAdminPassword initializes the admin password from ADMIN_PASSWORD on
+// first boot. An existing password is never overwritten, so operators can keep
+// using it in compose without rotating the password on every restart.
+func (s *Server) bootstrapAdminPassword() error {
+	pw := os.Getenv("ADMIN_PASSWORD")
+	if pw == "" {
+		return nil
+	}
+	if msg := validatePassword(pw); msg != "" {
+		return fmt.Errorf("ADMIN_PASSWORD %s", msg)
+	}
+	existing, _, err := s.m.pg.GetSetting(authPassKey)
+	if err != nil {
+		return err
+	}
+	if existing != "" {
+		return nil
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("加密 ADMIN_PASSWORD: %w", err)
+	}
+	inserted, err := s.m.pg.InsertSettingIfAbsent(authPassKey, string(hash))
+	if err != nil {
+		return err
+	}
+	if inserted {
+		log.Printf("[auth] 已使用 ADMIN_PASSWORD 初始化管理员密码")
+	}
+	return nil
+}
 
 // validatePassword 返回空串表示通过，否则返回可直接展示给用户的中文原因。
 func validatePassword(pw string) string {
@@ -184,6 +229,12 @@ func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing != "" {
 		writeErr(w, 403, "密码已设置")
+		return
+	}
+	// 首次初始化等于把管理员权限交给第一个调用者。默认只允许本机直连；
+	// 容器/远程部署请用 ADMIN_PASSWORD 在启动时引导，避免暴露未初始化实例。
+	if !isLoopbackRequest(r) {
+		writeErr(w, 403, "首次初始化仅允许从本机访问；远程部署请设置 ADMIN_PASSWORD 环境变量后重启")
 		return
 	}
 	var req struct {
