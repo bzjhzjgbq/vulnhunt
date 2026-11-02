@@ -123,9 +123,6 @@ func TestWorkerPoolSettingsRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s := New(ctx, m, t.TempDir(), t.TempDir(), t.TempDir())
-	// The shared test database can contain live tasks; wait for their goroutines
-	// before t.TempDir cleanup removes the data directory.
-	defer s.engine.StopAll()
 	if _, err := m.pg.Exec("DELETE FROM settings WHERE key=$1", settingWorkerPools); err != nil {
 		t.Fatal(err)
 	}
