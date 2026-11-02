@@ -118,8 +118,7 @@ export default function LLMUsagePage() {
         <div>
           <h1 className="text-lg font-semibold">LLM 用量</h1>
           <p className="text-sm text-muted-foreground">
-            来自始终开启的 <code className="font-mono text-xs">llm_usage</code> 计量表，按 UTC 日聚合。
-            成本未计算：不同 provider 单价不同，这里只展示实测 token、调用、错误与延迟。
+            来自始终开启的 <code className="font-mono text-xs">llm_usage</code> 计量表，按 UTC 日聚合调用次数、输入/输出 token、缓存、错误与延迟。
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-md border p-1">
