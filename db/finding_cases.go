@@ -389,7 +389,7 @@ func (d *DB) RemoveFindingCaseMember(ctx context.Context, cid, fid int64, reason
 		if _, err := tx.Exec(`SELECT pg_advisory_xact_lock($1)`, int64(5100000000000000)+origin); err != nil {
 			return err
 		}
-		// Deleting a task retains its findings and folder history.
+		// Deleting a task removes its findings but keeps folder history.
 		var live int64
 		if err := tx.QueryRow(`SELECT id FROM tasks WHERE id=$1 FOR UPDATE`, origin).Scan(&live); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err

@@ -197,19 +197,12 @@ func TestFindingCaseTaskDeletionAndRepeatedDetach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A source task can disappear without deleting standalone reports or breaking old links.
-	if err := d.DeleteTask(task.ID); err != nil {
-		t.Fatal(err)
-	}
 	defer func() {
 		for _, id := range ids {
 			_, _ = d.DeleteFinding(id)
 		}
 	}()
-	c, err := d.GetFindingCase(cid)
-	if err != nil || c == nil || c.TaskID != nil || c.Count != 3 {
-		t.Fatalf("retention %+v %v", c, err)
-	}
+	// Detaching is idempotent, including a repeated retry of the same member.
 	if err := d.RemoveFindingCaseMember(ctx, cid, ids[0], "undo"); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +215,7 @@ func TestFindingCaseTaskDeletionAndRepeatedDetach(t *testing.T) {
 	if err := d.RemoveFindingCaseMember(ctx, cid, ids[2], "released by dissolution"); err != nil {
 		t.Fatal(err)
 	}
-	c, _ = d.GetFindingCase(cid)
+	c, _ := d.GetFindingCase(cid)
 	if c.Active || c.Count != 0 {
 		t.Fatalf("folder not dissolved %+v", c)
 	}
@@ -230,6 +223,20 @@ func TestFindingCaseTaskDeletionAndRepeatedDetach(t *testing.T) {
 		f, e := d.GetFinding(id)
 		if e != nil || f == nil || f.Evidence == "" {
 			t.Fatalf("original lost %d %v", id, e)
+		}
+	}
+	// DeleteTask removes its findings (they must not become unattributable rows);
+	// the standalone folder survives with no task and no members.
+	if err := d.DeleteTask(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err = d.GetFindingCase(cid)
+	if err != nil || c == nil || c.TaskID != nil || c.Count != 0 || c.Active {
+		t.Fatalf("retention %+v %v", c, err)
+	}
+	for _, id := range ids[:3] {
+		if f, e := d.GetFinding(id); e != nil || f != nil {
+			t.Fatalf("finding %d survived task deletion: %+v %v", id, f, e)
 		}
 	}
 }

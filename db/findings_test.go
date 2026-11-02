@@ -313,17 +313,18 @@ func TestFindingGroupsAndUnassignedPaging(t *testing.T) {
 		t.Fatalf("query-filtered groups: %+v groups=%d findings=%d err=%v",
 			matchedGroups, matchedGroupTotal, matchedFindingTotal, err)
 	}
-	// Retained findings from deleted tasks join the same bucket as findings that
-	// were created without any task.
+	// DeleteTask removes the task's findings (they must go with the task), so only
+	// the pre-existing task-less finding remains outside taskA.
 	if err := d.DeleteTask(taskB.ID); err != nil {
 		t.Fatal(err)
 	}
 
+	wantFindings := len(seed) - 1
 	page, groupTotal, findingTotal, err := d.ListFindingGroups(FindingFilter{VulnClass: vc, Sort: "severity"}, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page) != 1 || groupTotal != 2 || findingTotal != 4 {
+	if len(page) != 1 || groupTotal != 2 || findingTotal != wantFindings {
 		t.Fatalf("page totals: items=%d groups=%d findings=%d", len(page), groupTotal, findingTotal)
 	}
 	groups, _, _, err := d.ListFindingGroups(FindingFilter{VulnClass: vc}, 1, 10)
@@ -341,7 +342,7 @@ func TestFindingGroupsAndUnassignedPaging(t *testing.T) {
 	if live == nil || live.Count != 2 || live.Critical != 1 || live.High != 1 || live.TaskDescription != "group A" {
 		t.Fatalf("live group mismatch: %+v", live)
 	}
-	if unassigned == nil || unassigned.Count != 2 || unassigned.Medium != 1 || unassigned.Low != 1 {
+	if unassigned == nil || unassigned.Count != 1 || unassigned.Medium != 1 {
 		t.Fatalf("unassigned group mismatch: %+v", unassigned)
 	}
 	groupForTask := func(items []FindingGroup, taskID int64) *FindingGroup {
@@ -387,16 +388,16 @@ func TestFindingGroupsAndUnassignedPaging(t *testing.T) {
 	}
 
 	orphans, total, err := d.ListFindingsPage(FindingFilter{VulnClass: vc, TaskID: FindingUnassignedTask}, 1, 10)
-	if err != nil || total != 2 || len(orphans) != 2 {
+	if err != nil || total != 1 || len(orphans) != 1 {
 		t.Fatalf("unassigned page: len=%d total=%d err=%v", len(orphans), total, err)
 	}
 	maxPage := int(^uint(0) >> 1)
 	farFindings, farTotal, err := d.ListFindingsPage(FindingFilter{VulnClass: vc}, maxPage, 200)
-	if err != nil || farTotal != len(seed) || len(farFindings) != 0 {
+	if err != nil || farTotal != wantFindings || len(farFindings) != 0 {
 		t.Fatalf("far finding page: len=%d total=%d err=%v", len(farFindings), farTotal, err)
 	}
 	farGroups, farGroupTotal, farFindingTotal, err := d.ListFindingGroups(FindingFilter{VulnClass: vc}, maxPage, 100)
-	if err != nil || farGroupTotal != 2 || farFindingTotal != len(seed) || len(farGroups) != 0 {
+	if err != nil || farGroupTotal != 2 || farFindingTotal != wantFindings || len(farGroups) != 0 {
 		t.Fatalf("far group page: len=%d groups=%d findings=%d err=%v",
 			len(farGroups), farGroupTotal, farFindingTotal, err)
 	}
