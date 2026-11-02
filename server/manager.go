@@ -15,13 +15,13 @@ import (
 	"sync"
 	"time"
 
+	actool "github.com/Autumn-27/norma/tool"
 	"vulnhunt/agent"
 	pgdb "vulnhunt/db"
 	"vulnhunt/enrich"
 	"vulnhunt/guard"
 	"vulnhunt/intercept"
 	"vulnhunt/traffic"
-	actool "github.com/Autumn-27/norma/tool"
 )
 
 // Task is one engagement: a description + goal + its own exploration store,
@@ -235,10 +235,13 @@ type Manager struct {
 	// this outer write lock an older request could commit first and publish last.
 	taskStateMu sync.Mutex
 	mu          sync.RWMutex
-	tasks       map[string]*Task
-	active      string
-	trafficOn   bool // 流量捕获开关（默认关；settings.traffic_capture）
-	llmRecOn    bool // LLM 录制开关（默认关；settings.llm_record）
+	// engines are the servers created for this manager. Close stops their task
+	// runtimes before closing the database so no background writer races teardown.
+	engines   []*Engine
+	tasks     map[string]*Task
+	active    string
+	trafficOn bool // 流量捕获开关（默认关；settings.traffic_capture）
+	llmRecOn  bool // LLM 录制开关（默认关；settings.llm_record）
 	// 联网搜索开关与来源（默认关；settings.web_search_*）。brave-free 需要 braveKey；tavily 需要 tavilyKey。
 	// webSearchProxy 是独立出口代理(http/https/socks5)，与记录流量的 MITM 代理无关。
 	webSearchOn      bool
@@ -962,6 +965,14 @@ func (m *Manager) SetGlobalProxy(raw string) error {
 }
 
 func (m *Manager) Close() error {
+	m.mu.Lock()
+	engines := append([]*Engine(nil), m.engines...)
+	m.mu.Unlock()
+	// Stop task runtimes before closing the DB: they write activities, archives
+	// and task files, and a caller may remove the data dir right after Close.
+	for _, e := range engines {
+		e.StopAll()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.traffic != nil {
