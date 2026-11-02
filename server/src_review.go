@@ -36,7 +36,16 @@ type standardReviewResponse struct {
 // Launched tasks use the program name, so this covers both linked and legacy tasks.
 func standardForTask(task *Task) *SRCStandard {
 	needle := strings.TrimSpace(task.Name + " " + task.Description)
-	return resolveSRCStandard(&db.SRCProgram{Name: needle})
+	std := resolveSRCStandard(&db.SRCProgram{Name: needle})
+	// Task names look like "<vendor>｜<platform>SRC". resolveSRCStandard has
+	// already merged the vendor's program rules into the platform base; here we
+	// only make the explicit platform win when naming the standard, so a task
+	// opened on 漏洞盒子 is not reported as the vendor's program standard.
+	if platform := namedPlatform(needle); platform != nil {
+		std.ID = platform.ID
+		std.Name = platform.Name
+	}
+	return std
 }
 
 func (s *Server) taskStandardReview(w http.ResponseWriter, r *http.Request) {

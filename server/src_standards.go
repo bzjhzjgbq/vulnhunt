@@ -147,6 +147,23 @@ func resolveSRCStandard(program *db.SRCProgram) *SRCStandard {
 	return out
 }
 
+// namedPlatform returns the platform standard explicitly named in needle
+// (e.g. "漏洞盒子SRC", "补天专属SRC"). Task names are usually
+// "<vendor>｜<platform>SRC"; the explicit platform must win over the vendor's
+// program override when choosing which standard the task is reviewed against.
+func namedPlatform(needle string) *SRCStandard {
+	book := loadSRCStandards()
+	lower := strings.ToLower(needle)
+	for i := range book.Platforms {
+		for _, m := range book.Platforms[i].Match {
+			if m != "" && strings.Contains(lower, strings.ToLower(m)) {
+				return &book.Platforms[i]
+			}
+		}
+	}
+	return nil
+}
+
 // standardPrompt renders the standard as instructions the planner/worker must follow.
 func (std *SRCStandard) promptText() string {
 	var b strings.Builder
