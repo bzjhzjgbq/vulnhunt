@@ -46,7 +46,10 @@ jobs:
       # continue-on-error，改为真正的门禁。
       - name: go test (non-blocking, existing debt)
         continue-on-error: true
-        run: go test -count=1 ./...
+        # -p 1: db/agent/server share one test database and the engine keeps
+        # background goroutines alive; running packages concurrently makes the
+        # suite deadlock or race on TempDir cleanup.
+        run: go test -p 1 -count=1 ./...
 
   frontend:
     runs-on: ubuntu-latest
