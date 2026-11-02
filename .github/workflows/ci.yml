@@ -41,9 +41,6 @@ jobs:
           cache: true
       - name: go vet
         run: go vet ./...
-      # 存量测试在全新库上已有若干失败（如 TestStandardForTaskPicksPlatform、
-      # TestFindingGroupsAndUnassignedPaging），先只报告不阻塞；修完后去掉
-      # continue-on-error，改为真正的门禁。
       - name: go test
         # -p 1: db/agent/server share one test database and the engine keeps
         # background goroutines alive; running packages concurrently makes the
@@ -72,3 +69,15 @@ jobs:
         working-directory: web
         continue-on-error: true
         run: npm run lint
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz | tar -xz -C /tmp gitleaks
+          /tmp/gitleaks detect --source . --config .gitleaks.toml --redact -v

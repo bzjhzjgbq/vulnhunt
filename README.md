@@ -124,6 +124,15 @@ $env:VULNHUNT_PG_DSN="postgres://user:pass@127.0.0.1:5432/vulnhunt?sslmode=disab
 - 只对**已授权**的目标做测试；开测时必须显式确认授权范围。
 - 默认只监听 `127.0.0.1`，本机部署；对外提供服务前请启用访问控制与 HTTPS。
 - 工具产出的发现需要人工复核后再提交，平台规则与法律边界由使用者自行负责。
+- 本机的真实漏洞报告、资产/发现/赏金截图和 PoC 默认已加入 `.gitignore`；不要用
+  `git add -A`，只提交明确脱敏后的文件。
+- 提交前可启用密钥扫描钩子（需安装 [gitleaks](https://github.com/gitleaks/gitleaks)）：
+
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+
+  CI 的 `secret-scan` job 也会扫描完整提交历史。
 
 ## 许可证与上游
 
