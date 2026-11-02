@@ -7,6 +7,12 @@ useDefault = true
 
 [allowlist]
 description = "Placeholders and test fixtures intentionally committed"
+paths = [
+  # 掩码/脱敏测试本身使用哨兵值；mock 数据是纯演示数据。
+  '''(^|/)notify/(mask|redact)_test\.go$''',
+  '''(^|/)server/notify_api_test\.go$''',
+  '''(^|/)web/src/lib/mock/data\.ts$''',
+]
 regexes = [
   # README、compose、CI、测试夹具里的示例数据库 URL
   '''postgres(ql)?://(user|u|vulnhunt|artex):(pass|p|vulnhunt|changeme|change-me|password|\$\{[^}]+\})@''',
