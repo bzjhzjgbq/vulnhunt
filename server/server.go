@@ -163,6 +163,9 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		if err := s.basicAuth.load(m.pg); err != nil {
 			log.Fatalf("[auth] load HTTP Basic Auth: %v", err)
 		}
+		if err := s.bootstrapAdminPassword(); err != nil {
+			log.Fatalf("[auth] ADMIN_PASSWORD bootstrap: %v", err)
+		}
 	}
 	// 熔断阈值/冷却是失败路径上的热参数，启动时把全局重试策略推给 Registry 一次；
 	// 之后每次保存策略再推一次（saveLLMRetryPolicy）。

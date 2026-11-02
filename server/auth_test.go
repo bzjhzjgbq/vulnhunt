@@ -62,6 +62,44 @@ func TestAuthInitFailsClosedWhenDataSourceUnavailable(t *testing.T) {
 	}
 }
 
+func TestIsLoopbackRequest(t *testing.T) {
+	for _, tc := range []struct {
+		remote string
+		want   bool
+	}{
+		{"127.0.0.1:1234", true},
+		{"[::1]:1234", true},
+		{"192.168.1.10:1234", false},
+		{"172.17.0.1:1234", false}, // Docker bridge gateway
+		{"", false},
+		{"not-an-address", false},
+	} {
+		r := httptest.NewRequest("POST", "/api/auth/init", nil)
+		r.RemoteAddr = tc.remote
+		if got := isLoopbackRequest(r); got != tc.want {
+			t.Errorf("RemoteAddr=%q got %v want %v", tc.remote, got, tc.want)
+		}
+	}
+}
+
+func TestAuthInitRejectsNonLoopbackPeer(t *testing.T) {
+	m, err := NewManager(t.TempDir(), "")
+	if err != nil {
+		t.Skipf("postgres unavailable (%v)", err)
+	}
+	defer m.Close()
+
+	s := &Server{m: m}
+	req := httptest.NewRequest("POST", "/api/auth/init", strings.NewReader(`{"password":"correct-horse"}`))
+	req.RemoteAddr = "203.0.113.5:4321"
+	w := httptest.NewRecorder()
+	s.authInit(w, req)
+
+	if w.Code != 403 {
+		t.Fatalf("status=%d want 403 for non-loopback init; body=%s", w.Code, w.Body.String())
+	}
+}
+
 func TestValidatePassword(t *testing.T) {
 	for _, tc := range []struct {
 		name, pw string

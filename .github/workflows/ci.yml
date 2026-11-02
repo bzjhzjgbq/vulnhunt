@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vulnhunt
+          POSTGRES_PASSWORD: vulnhunt
+          POSTGRES_DB: vulnhunt
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vulnhunt"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      VULNHUNT_PG_DSN: postgres://vulnhunt:vulnhunt@127.0.0.1:5432/vulnhunt?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      # 存量测试在全新库上已有若干失败（如 TestStandardForTaskPicksPlatform、
+      # TestFindingGroupsAndUnassignedPaging），先只报告不阻塞；修完后去掉
+      # continue-on-error，改为真正的门禁。
+      - name: go test (non-blocking, existing debt)
+        continue-on-error: true
+        run: go test -count=1 ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: install
+        working-directory: web
+        run: npm ci
+      - name: unit tests
+        working-directory: web
+        run: npm test
+      # 存量代码有 51 个 lint error / 220 个格式 error，先只报告不阻塞。
+      # 清理完成后把 continue-on-error 去掉，改为 `npm run check`。
+      - name: lint (non-blocking, existing debt)
+        working-directory: web
+        continue-on-error: true
+        run: npm run lint

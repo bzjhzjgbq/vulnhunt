@@ -23,6 +23,9 @@ services:
       VULNHUNT_PG_DSN: postgres://${POSTGRES_USER:-vulnhunt}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vulnhunt}?sslmode=disable
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # 首次启动自动创建管理员密码（已有密码不覆盖）。容器内 /setup 的请求
+      # 源地址不是回环，未设置该变量时首次初始化会被拒绝。
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       VULNHUNT_LLM_PROVIDER: ${VULNHUNT_LLM_PROVIDER:-}
       VULNHUNT_LLM_MODEL: ${VULNHUNT_LLM_MODEL:-}
       VULNHUNT_LLM_BASE_URL: ${VULNHUNT_LLM_BASE_URL:-}

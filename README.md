@@ -94,6 +94,14 @@ $env:VULNHUNT_PG_DSN="postgres://user:pass@127.0.0.1:5432/vulnhunt?sslmode=disab
 .\vulnhunt.exe -addr 127.0.0.1:8787
 ```
 
+> **首次设置管理员密码**：`/api/auth/init` 默认只接受本机（回环地址）请求。
+> 通过 Docker 或对外网卡部署时，请先设置 `ADMIN_PASSWORD`（至少 8 位），服务会在
+> 首次启动时自动创建管理员密码；已有密码不会被覆盖。
+>
+> ```powershell
+> $env:ADMIN_PASSWORD="change-me-please"
+> ```
+
 ## 使用流程
 
 1. **平台库**选目标，点「标准」先看该平台收什么、不收什么；
