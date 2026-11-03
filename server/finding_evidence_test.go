@@ -1,7 +1,10 @@
 package server
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -56,6 +59,57 @@ func TestFindingEvidenceAPIAndSubmission(t *testing.T) {
 	s.findingSubmission(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "结构化证据") || !strings.Contains(rec.Body.String(), "HTTP/1.1 200 OK") {
 		t.Fatalf("submission status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	for _, format := range []string{"md-single", "md-zip", "json"} {
+		exportURL := "/api/exploration/findings/export?scope=selected&format=" + format + "&ids=" + idStr
+		req = httptest.NewRequest(http.MethodGet, exportURL, nil)
+		rec = httptest.NewRecorder()
+		s.findingsExport(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s export status=%d body=%s", format, rec.Code, rec.Body.String())
+		}
+		if format == "md-single" {
+			if !strings.Contains(rec.Body.String(), "结构化证据") || !strings.Contains(rec.Body.String(), "HTTP/1.1 200 OK") {
+				t.Fatalf("md-single export missing structured evidence:\n%s", rec.Body.String())
+			}
+			continue
+		}
+		if format == "json" {
+			if !strings.Contains(rec.Body.String(), `"structured_evidence"`) || !strings.Contains(rec.Body.String(), "HTTP/1.1 200 OK") {
+				t.Fatalf("json export missing structured evidence:\n%s", rec.Body.String())
+			}
+			continue
+		}
+		archive, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var bodyFile, sidecar, linked bool
+		for _, entry := range archive.File {
+			r, err := entry.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := io.ReadAll(r)
+			r.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case strings.HasSuffix(entry.Name, ".md"):
+				if bytes.Contains(raw, []byte("/structured/")) {
+					linked = true
+				}
+			case strings.Contains(entry.Name, "/structured/") && strings.HasSuffix(entry.Name, ".txt"):
+				bodyFile = bytes.Contains(raw, []byte("HTTP/1.1 200 OK"))
+			case strings.Contains(entry.Name, "/structured/") && strings.HasSuffix(entry.Name, ".json"):
+				sidecar = bytes.Contains(raw, []byte(added.Evidence.ContentHash))
+			}
+		}
+		if !bodyFile || !sidecar || !linked {
+			t.Fatalf("md-zip missing structured evidence (body=%v sidecar=%v linked=%v): %v", bodyFile, sidecar, linked, archive.File)
+		}
 	}
 
 	req = httptest.NewRequest(http.MethodDelete, "/api/exploration/findings/"+idStr+"/evidence/"+strconv.FormatInt(added.Evidence.ID, 10), nil)

@@ -22,6 +22,7 @@ type DBFinding struct {
 	EvidenceVersion       int64
 	ReportEvidenceVersion int64
 	TrafficBindings       []FindingTrafficBinding // populated only for export
+	StructuredEvidence    []FindingEvidence       // populated only for export
 
 	ID              int64
 	TaskID          *int64

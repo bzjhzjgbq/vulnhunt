@@ -28,6 +28,7 @@ func writeFindingsZipEntries(zw *zip.Writer, findings []*db.DBFinding, stage str
 	store := evidence.New(nil, nil, stage) // private export copy; not subject to GC
 	used := map[string]int{}
 	evidencePaths := map[string]bool{}
+	structuredPaths := map[string]bool{}
 	for _, f := range findings {
 		base := report.FindingFilename(f)
 		name := base
@@ -88,6 +89,32 @@ func writeFindingsZipEntries(zw *zip.Writer, findings []*db.DBFinding, stage str
 				}(); err != nil {
 					return err
 				}
+			}
+		}
+		for _, ev := range f.StructuredEvidence {
+			prefix := fmt.Sprintf("evidence/%d/structured/", f.ID)
+			name := prefix + report.StructuredEvidenceFilename(ev)
+			if structuredPaths[name] {
+				continue
+			}
+			structuredPaths[name] = true
+			w, err := zw.Create(name)
+			if err != nil {
+				return err
+			}
+			if _, err = io.WriteString(w, ev.Content); err != nil {
+				return err
+			}
+			// Sidecar metadata makes the archive self-describing without
+			// duplicating the (potentially large) content a second time.
+			meta := ev
+			meta.Content = ""
+			w, err = zw.Create(name + ".json")
+			if err != nil {
+				return err
+			}
+			if err = json.NewEncoder(w).Encode(meta); err != nil {
+				return err
 			}
 		}
 	}

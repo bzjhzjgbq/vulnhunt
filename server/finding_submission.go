@@ -38,27 +38,15 @@ func (s *Server) findingSubmission(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "finding not found")
 		return
 	}
-	md := reportpkg.SubmissionMarkdown(f, template, time.Now())
-	// Structured evidence is independent of the report body; append it so the
-	// copied submission includes command output / file hashes / screenshot notes.
-	if evs, err := s.m.pg.ListFindingEvidence(r.Context(), id); err == nil && len(evs) > 0 {
-		var b strings.Builder
-		b.WriteString(md)
-		b.WriteString("\n\n## 结构化证据\n\n")
-		for _, ev := range evs {
-			fmt.Fprintf(&b, "### [%s] %s\n\n", ev.Kind, ev.Label)
-			if ev.Note != "" {
-				b.WriteString(ev.Note + "\n\n")
-			}
-			b.WriteString("```\n")
-			b.WriteString(ev.Content)
-			if !strings.HasSuffix(ev.Content, "\n") {
-				b.WriteString("\n")
-			}
-			b.WriteString("```\n\n")
-		}
-		md = b.String()
+	// SubmissionMarkdown appends structured evidence itself, so the single
+	// draft and the batch submission pack share one rendering path.
+	evs, err := s.m.pg.ListFindingEvidence(r.Context(), id)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
 	}
+	f.StructuredEvidence = evs
+	md := reportpkg.SubmissionMarkdown(f, template, time.Now())
 	writeJSON(w, 200, map[string]any{
 		"template": template,
 		"markdown": md,

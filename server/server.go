@@ -2341,6 +2341,16 @@ func (s *Server) findingsExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Load structured evidence after case expansion so members pulled into a
+	// consolidated export carry their manually attached evidence too.
+	for _, f := range fs {
+		items, err := s.m.pg.ListFindingEvidence(r.Context(), f.ID)
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		f.StructuredEvidence = items
+	}
 	stage, err := os.MkdirTemp("", "vulnhunt-finding-export-")
 	if err != nil {
 		writeErr(w, 500, err.Error())

@@ -318,6 +318,7 @@ type FindingDTO struct {
 	ContentVersion        int64                      `json:"content_version"`
 	ReportStale           bool                       `json:"report_stale"`
 	TrafficBindings       []db.FindingTrafficBinding `json:"traffic_bindings,omitempty"`
+	StructuredEvidence    []db.FindingEvidence       `json:"structured_evidence,omitempty"`
 
 	ID        string `json:"id"`
 	FindingID string `json:"finding_id,omitempty"` // standalone findings-table id — the handle for status updates
@@ -459,14 +460,15 @@ func findingFromDB(f *db.DBFinding, assets map[int64]*db.Asset) FindingDTO {
 		TrafficCount: f.TrafficCount, EvidenceVersion: f.EvidenceVersion, ReportEvidenceVersion: f.ReportEvidenceVersion,
 		ContentVersion: f.ContentVersion,
 		ReportStale:    f.Report != "" && f.EvidenceVersion != f.ReportEvidenceVersion, TrafficBindings: f.TrafficBindings,
-		VulnClass: f.VulnClass,
-		Name:      f.Name,
-		Severity:  f.Severity,
-		Status:    status,
-		Summary:   f.Summary,
-		Evidence:  f.Evidence,
-		Report:    f.Report,
-		TS:        rfc3339(f.CreatedAt),
+		StructuredEvidence: f.StructuredEvidence,
+		VulnClass:          f.VulnClass,
+		Name:               f.Name,
+		Severity:           f.Severity,
+		Status:             status,
+		Summary:            f.Summary,
+		Evidence:           f.Evidence,
+		Report:             f.Report,
+		TS:                 rfc3339(f.CreatedAt),
 	}
 	if f.ExportCaseID > 0 {
 		d.ID = "case:" + i64s(f.ExportCaseID)

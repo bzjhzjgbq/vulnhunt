@@ -88,6 +88,7 @@ func FindingsMarkdown(fs []*db.DBFinding, generatedAt time.Time) string {
 			b.WriteString("\n\n")
 		}
 		b.WriteString(findingTrafficMarkdown(f, false))
+		b.WriteString(structuredEvidenceMarkdown(f, false, 4))
 		b.WriteString("---\n\n")
 	}
 	return b.String()
@@ -119,6 +120,7 @@ func SingleFindingMarkdown(f *db.DBFinding, generatedAt time.Time) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(findingTrafficMarkdown(f, true))
+	b.WriteString(structuredEvidenceMarkdown(f, true, 3))
 	return b.String()
 }
 
@@ -206,5 +208,60 @@ func findingTrafficMarkdown(f *db.DBFinding, attachments bool) string {
 		}
 	}
 	out.WriteString("\n")
+	return out.String()
+}
+
+// StructuredEvidenceFilename returns the archive-safe filename for one
+// manually attached evidence item. The ID prefix keeps names unique even when
+// labels repeat; the extension reflects the kind of content.
+func StructuredEvidenceFilename(ev db.FindingEvidence) string {
+	// The regex already replaces path separators, and the trim removes bare
+	// "."/".." labels, so the result can never escape the archive directory.
+	label := unsafeFilenameChars.ReplaceAllString(nz(ev.Label, ev.Kind), "_")
+	label = strings.Trim(label, "._-")
+	if label == "" {
+		label = "evidence"
+	}
+	if len(label) > 80 {
+		label = label[:80]
+	}
+	ext := ".txt"
+	if ev.Kind == "http" {
+		ext = ".http"
+	}
+	return fmt.Sprintf("%d-%s%s", ev.ID, label, ext)
+}
+
+// structuredEvidenceMarkdown renders evidence attached through
+// finding_evidence (command output, file hashes, screenshot notes). These
+// items are independent of captured HTTP traffic, so non-HTTP findings still
+// export their proof. In attachments mode the body links to the archive copy
+// written by the md-zip exporter.
+func structuredEvidenceMarkdown(f *db.DBFinding, attachments bool, itemLevel int) string {
+	if len(f.StructuredEvidence) == 0 {
+		return ""
+	}
+	var out strings.Builder
+	out.WriteString("\n## 结构化证据\n\n")
+	itemHeading := strings.Repeat("#", itemLevel)
+	for _, ev := range f.StructuredEvidence {
+		fmt.Fprintf(&out, "%s [%s] %s\n\n", itemHeading, nz(ev.Kind, "text"), nz(ev.Label, fmt.Sprintf("#%d", ev.ID)))
+		if note := strings.TrimSpace(ev.Note); note != "" {
+			fmt.Fprintf(&out, "%s\n\n", note)
+		}
+		fmt.Fprintf(&out, "- SHA-256：`%s`\n", ev.ContentHash)
+		if attachments {
+			fmt.Fprintf(&out, "- 原始内容：[%s](evidence/%d/structured/%s)\n",
+				StructuredEvidenceFilename(ev), f.ID, StructuredEvidenceFilename(ev))
+		}
+		out.WriteString("\n")
+		// Pick a fence longer than any backtick run inside the content so pasted
+		// command output can never terminate the block early.
+		fence := "```"
+		for strings.Contains(ev.Content, fence) {
+			fence += "`"
+		}
+		fmt.Fprintf(&out, "%s\n%s\n%s\n\n", fence, strings.TrimRight(ev.Content, "\n"), fence)
+	}
 	return out.String()
 }
