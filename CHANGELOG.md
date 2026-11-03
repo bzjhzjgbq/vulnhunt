@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### 漏洞复核与误报回灌
+
+- 新增批量 AI 复核（`POST/GET /api/exploration/finding-review`）：独立只读审计已有证据，输出 `verified` / `evidence_insufficient` / `likely_fp` 及缺失证据清单；不改变人工处置状态，也不向目标发送请求。
+- `findings` 新增 `review_status` / `review_reason` / `review_model` / `reviewed_at` 与 `triage_reason`；发现列表显示复核结论，详情页可查看理由并填写处置备注。
+- `report_finding` 与 planner 的 `graph_overview` 会带出同任务/同企业的历史误报模式，提醒模型避免把同类非问题再次当作漏洞上报。
+
 ### 报告规范
 
 - 漏洞报告固定为 6 段结构：标题、漏洞等级、一句话结论、成立前提、关键动作、影响范围。

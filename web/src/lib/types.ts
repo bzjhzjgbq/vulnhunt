@@ -525,6 +525,12 @@ export interface Finding {
   summary: string;
   evidence: string;
   report?: string; // 详细报告(Markdown);仅详情接口返回,列表为空
+  // 人工处置原因与 AI 复核结论；复核不改变 status，最终处置仍由人决定。
+  triage_reason?: string;
+  review_status?: "unreviewed" | "verified" | "evidence_insufficient" | "likely_fp";
+  review_reason?: string;
+  review_model?: string;
+  reviewed_at?: string;
   intent_id?: string;
   param_id?: string;
   task_id?: string;
@@ -533,6 +539,30 @@ export interface Finding {
   inherited?: boolean;
   assets?: FindingAsset[];
   ts: string;
+}
+
+// 批量 AI 复核：只读证据给出结论，不改变人工处置状态。
+export type FindingReviewStatus = "verified" | "evidence_insufficient" | "likely_fp";
+export interface FindingReviewItem {
+  finding_id: number;
+  name?: string;
+  severity?: string;
+  verdict: FindingReviewStatus;
+  reason?: string;
+}
+export interface FindingReviewJob {
+  id: string;
+  running: boolean;
+  total: number;
+  processed: number;
+  verified: number;
+  insufficient: number;
+  likely_fp: number;
+  failed: number;
+  started_at: string;
+  finished_at?: string;
+  last_error?: string;
+  items?: FindingReviewItem[];
 }
 
 // FindingEvidence 是挂在漏洞上的结构化证据（命令输出/文件哈希/截图说明等）。

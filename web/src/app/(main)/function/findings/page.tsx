@@ -14,6 +14,7 @@ import {
   InfoIcon,
   SearchIcon,
   ShieldAlertIcon,
+  SparklesIcon,
   TriangleAlertIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 import { FindingCaseList } from "@/components/finding-case-list";
 import { FindingRetestDialog } from "@/components/finding-retest-dialog";
 import { StatusBadge } from "@/components/status-badge";
+import { Badge } from "@/components/ui/badge";
 import { TablePagination } from "@/components/table-pagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +53,7 @@ import type {
   FindingAssetNode,
   FindingCaseListRow,
   FindingGroup,
+  FindingReviewJob,
   FindingStats,
   FindingStatus,
   Severity,
@@ -382,6 +385,37 @@ export default function FindingsPage() {
       toast.error(`操作失败：${(e as Error).message}`);
     } finally {
       setEvApplying(false);
+    }
+  }
+
+  // AI 复核：后台逐条只读审计证据，不改变处置状态；这里轮询进度并展示结论。
+  const [aiOpen, setAiOpen] = React.useState(false);
+  const [aiJob, setAiJob] = React.useState<FindingReviewJob | null>(null);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const [aiLimit, setAiLimit] = React.useState(20);
+
+  async function startAiReview() {
+    setAiLoading(true);
+    try {
+      const resp = await api.startFindingReview({ limit: aiLimit });
+      if (!resp.job) {
+        toast.message(resp.message ?? "没有待复核的漏洞");
+        return;
+      }
+      setAiJob(resp.job);
+      for (let i = 0; i < 160; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const st = await api.findingReviewStatus();
+        if (st.job) setAiJob(st.job);
+        if (!st.job?.running) break;
+      }
+      toast.success("AI 复核完成");
+      void refreshGroups();
+      void loadFlat();
+    } catch (e) {
+      toast.error(`复核失败：${(e as Error).message}`);
+    } finally {
+      setAiLoading(false);
     }
   }
 
@@ -1137,6 +1171,9 @@ export default function FindingsPage() {
             <Button size="sm" variant="outline" onClick={() => void openEvidenceReview()}>
               <ShieldAlertIcon /> 提交自检
             </Button>
+            <Button size="sm" variant="outline" onClick={() => setAiOpen(true)}>
+              <SparklesIcon /> AI 复核
+            </Button>
           </div>
         </div>
 
@@ -1676,6 +1713,104 @@ export default function FindingsPage() {
             >
               确认就绪（{evReview ? evReview.ok.filter((f) => f.status === "pending").length : 0}）
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>AI 复核</DialogTitle>
+            <DialogDescription>
+              独立审计已有证据，按严重等级优先处理 pending。复核只读，不向目标发请求，也不改变处置状态。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 py-1">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium">本次条数</span>
+                <NativeSelect value={String(aiLimit)} onChange={(e) => setAiLimit(Number(e.target.value))}>
+                  {[10, 20, 50, 100].map((n) => (
+                    <NativeSelectOption key={n} value={n}>
+                      {n}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </div>
+              <Button onClick={() => void startAiReview()} disabled={aiLoading || aiJob?.running}>
+                {aiLoading || aiJob?.running ? <Spinner /> : <SparklesIcon />}
+                {aiJob?.running ? "复核中…" : "开始复核"}
+              </Button>
+            </div>
+
+            {aiJob ? (
+              <>
+                <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span>
+                    进度 {aiJob.processed}/{aiJob.total}
+                  </span>
+                  <span className="text-emerald-600 dark:text-emerald-400">证据充分 {aiJob.verified}</span>
+                  <span className="text-amber-600 dark:text-amber-400">证据不足 {aiJob.insufficient}</span>
+                  <span className="text-red-600 dark:text-red-400">疑似误报 {aiJob.likely_fp}</span>
+                  {aiJob.failed > 0 ? <span>失败 {aiJob.failed}</span> : null}
+                </div>
+                {aiJob.last_error ? (
+                  <p className="text-red-600 dark:text-red-400 text-xs">{aiJob.last_error}</p>
+                ) : null}
+                {aiJob.items && aiJob.items.length > 0 ? (
+                  <div className="max-h-80 overflow-auto rounded-md border">
+                    {aiJob.items.map((it) => (
+                      <div key={it.finding_id} className="flex flex-col gap-1 border-b px-3 py-2 last:border-b-0">
+                        <span className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-medium">
+                            #{it.finding_id} {it.name}
+                          </span>
+                          {it.severity ? <span className="text-muted-foreground uppercase">{it.severity}</span> : null}
+                          <Badge
+                            variant={
+                              it.verdict === "verified"
+                                ? "default"
+                                : it.verdict === "likely_fp"
+                                  ? "destructive"
+                                  : "secondary"
+                            }
+                          >
+                            {it.verdict === "verified"
+                              ? "证据充分"
+                              : it.verdict === "likely_fp"
+                                ? "疑似误报"
+                                : "证据不足"}
+                          </Badge>
+                        </span>
+                        {it.reason ? (
+                          <span className="text-muted-foreground text-xs whitespace-pre-wrap">{it.reason}</span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs">
+                    复核进行中，结果会逐条出现。
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-muted-foreground rounded-md border border-dashed px-3 py-6 text-center text-xs">
+                复核不会修改漏洞状态；结论会显示在详情页和发现列表的数据里，由你决定确认或忽略。
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAiOpen(false)}>
+              关闭
+            </Button>
+            {aiJob?.running ? (
+              <Button variant="destructive" onClick={() => void api.cancelFindingReview()}>
+                取消复核
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

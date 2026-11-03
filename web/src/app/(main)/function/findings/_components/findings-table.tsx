@@ -280,7 +280,27 @@ export function FindingsTable({
                         未命中当前筛选
                       </Badge>
                     ) : null}
-                    <Badge variant="outline">流量证据 {f.traffic_count ?? 0} 条</Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <Badge variant="outline">流量证据 {f.traffic_count ?? 0} 条</Badge>
+                      {f.review_status && f.review_status !== "unreviewed" ? (
+                        <Badge
+                          variant={
+                            f.review_status === "verified"
+                              ? "default"
+                              : f.review_status === "likely_fp"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                        >
+                          AI：
+                          {f.review_status === "verified"
+                            ? "证据充分"
+                            : f.review_status === "likely_fp"
+                              ? "疑似误报"
+                              : "证据不足"}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>

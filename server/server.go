@@ -124,6 +124,12 @@ type Server struct {
 	archiveWake chan struct{}
 	archiveWG   sync.WaitGroup
 	side        *sideQuestionState
+
+	// reviewMu guards the single in-process batch review job. The job is
+	// intentionally serial: one LLM call at a time keeps rate limits and cost
+	// predictable, and lets a cancel take effect promptly.
+	reviewMu  sync.Mutex
+	reviewJob *findingReviewJob
 }
 
 // provEntry is a cached provider + its config for one LLM profile id.
@@ -864,6 +870,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/exploration/findings/{id}/deepen", s.deepenFinding)
 	mux.HandleFunc("GET /api/exploration/findings/{id}/retests", s.listFindingRetests)
 	mux.HandleFunc("GET /api/exploration/findings/retests/active", s.listActiveFindingRetests)
+	mux.HandleFunc("POST /api/exploration/finding-review", s.startFindingReview)
+	mux.HandleFunc("GET /api/exploration/finding-review", s.findingReviewStatus)
+	mux.HandleFunc("POST /api/exploration/finding-review/cancel", s.cancelFindingReview)
 	mux.HandleFunc("POST /api/exploration/findings/{id}/retests", s.startFindingRetest)
 	mux.HandleFunc("PATCH /api/exploration/findings/{id}", s.patchFinding)
 	mux.HandleFunc("DELETE /api/exploration/findings/{id}", s.deleteFinding)
@@ -2491,17 +2500,18 @@ func (s *Server) patchFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Status    *string `json:"status"`
-		Severity  *string `json:"severity"`
-		Name      *string `json:"name"`
-		VulnClass *string `json:"vulnclass"`
+		Status       *string `json:"status"`
+		Severity     *string `json:"severity"`
+		Name         *string `json:"name"`
+		VulnClass    *string `json:"vulnclass"`
+		TriageReason *string `json:"triage_reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, 400, "bad json: "+err.Error())
 		return
 	}
-	if body.Status == nil && body.Severity == nil && body.Name == nil && body.VulnClass == nil {
-		writeErr(w, 400, "nothing to update: provide status/severity/name/vulnclass")
+	if body.Status == nil && body.Severity == nil && body.Name == nil && body.VulnClass == nil && body.TriageReason == nil {
+		writeErr(w, 400, "nothing to update: provide status/severity/name/vulnclass/triage_reason")
 		return
 	}
 	if body.Status != nil {
@@ -2553,6 +2563,22 @@ func (s *Server) patchFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.VulnClass != nil {
 		n, err := s.m.pg.SetFindingVulnClass(id, strings.TrimSpace(*body.VulnClass))
+		if err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+		if n == 0 {
+			writeErr(w, 404, "finding not found")
+			return
+		}
+	}
+	if body.TriageReason != nil {
+		reason := strings.TrimSpace(*body.TriageReason)
+		if len([]rune(reason)) > 2000 {
+			writeErr(w, 400, "处置原因最多 2000 个字符")
+			return
+		}
+		n, err := s.m.pg.SetFindingTriageReason(id, reason)
 		if err != nil {
 			writeErr(w, 500, err.Error())
 			return

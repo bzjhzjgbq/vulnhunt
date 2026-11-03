@@ -1169,6 +1169,15 @@ CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(status, created_at DE
 -- 「按资产」视图靠 asset_ids @> '[<id>]' 反查发现,没有这个 GIN 索引就是全表扫。
 CREATE INDEX IF NOT EXISTS idx_findings_asset_ids ON findings USING GIN(asset_ids jsonb_path_ops);
 
+-- 人工处置原因与 AI 复核结果。review_status 由独立复核员写入，
+-- 不改变 status：人仍拥有最终处置权。取值统一由 server 侧白名单校验。
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS triage_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS review_status TEXT NOT NULL DEFAULT 'unreviewed';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS review_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS review_model TEXT NOT NULL DEFAULT '';
+ALTER TABLE findings ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_findings_review ON findings(review_status, created_at DESC);
+
 -- 报告内容的人工/Agent 编辑版本：content_version 是乐观锁，每次保存 +1。
 ALTER TABLE findings ADD COLUMN IF NOT EXISTS content_version BIGINT NOT NULL DEFAULT 0;
 

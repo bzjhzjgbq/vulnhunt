@@ -50,6 +50,7 @@ import type {
   FindingGroupsPage,
   FindingQuery,
   FindingRetest,
+  FindingReviewJob,
   FindingStats,
   FindingStatus,
   FindingsPage,
@@ -540,6 +541,11 @@ export const api = {
       `/tasks/${encodeURIComponent(taskId)}/evidence-review/apply`,
       { ids, action },
     ),
+  // AI 复核：批量（或指定 ids）只读审计证据；轮询 status 获取进度与结论。
+  startFindingReview: (opts?: { ids?: number[]; limit?: number }) =>
+    post<{ job: FindingReviewJob | null; message?: string }>("/exploration/finding-review", opts ?? {}),
+  findingReviewStatus: () => get<{ job: FindingReviewJob | null }>("/exploration/finding-review"),
+  cancelFindingReview: () => post<{ canceled: boolean }>("/exploration/finding-review/cancel", {}),
   createBounty: (body: Partial<BountySubmission>) => post<BountySubmission>("/bounty/submissions", body),
   updateBounty: (id: number, body: Partial<BountySubmission>) =>
     patch<BountySubmission>(`/bounty/submissions/${id}`, body),
@@ -908,7 +914,13 @@ export const api = {
   // 一次保存漏洞的名称/类别/严重等级(发现列表行内编辑用),只传出现的字段。
   updateFinding: (
     id: string,
-    fields: { name?: string; vulnclass?: string; severity?: Severity; status?: FindingStatus },
+    fields: {
+      name?: string;
+      vulnclass?: string;
+      severity?: Severity;
+      status?: FindingStatus;
+      triage_reason?: string;
+    },
   ) => patch<Finding>(`/exploration/findings/${id}`, fields),
   // 删除漏洞:移除 findings 记录 + 来源探索节点(从发现列表/任务发现 Tab/探索图一并消失)。
   deleteFinding: (id: string) => del<{ deleted: boolean; id: number }>(`/exploration/findings/${id}`),

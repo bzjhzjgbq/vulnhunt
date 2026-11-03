@@ -24,21 +24,54 @@ type DBFinding struct {
 	TrafficBindings       []FindingTrafficBinding // populated only for export
 	StructuredEvidence    []FindingEvidence       // populated only for export
 
-	ID              int64
-	TaskID          *int64
-	NodeID          *int64
-	VulnClass       string
-	Name            string // 漏洞名称(可读标题);为空时前端回退展示 VulnClass
-	Severity        string
-	Summary         string
-	Evidence        string
-	Worker          string
-	AssetIDs        []int64
-	Status          string
-	Report          string // 详细报告(Markdown);仅 GetFinding 填充,列表查询不带
-	ContentVersion  int64  // 人工/Agent 编辑内容的乐观锁版本
+	ID             int64
+	TaskID         *int64
+	NodeID         *int64
+	VulnClass      string
+	Name           string // 漏洞名称(可读标题);为空时前端回退展示 VulnClass
+	Severity       string
+	Summary        string
+	Evidence       string
+	Worker         string
+	AssetIDs       []int64
+	Status         string
+	Report         string // 详细报告(Markdown);仅 GetFinding 填充,列表查询不带
+	ContentVersion int64  // 人工/Agent 编辑内容的乐观锁版本
+	// TriageReason is the human explanation captured when a finding is marked
+	// false_positive/ignored/duplicate. Review* hold the latest automated review;
+	// they never overwrite Status, so a human still owns the final decision.
+	TriageReason    string
+	ReviewStatus    string
+	ReviewReason    string
+	ReviewModel     string
+	ReviewedAt      *time.Time
 	CreatedAt       time.Time
 	TaskDescription string // populated via LEFT JOIN on tasks
+}
+
+// Automated finding-review verdicts (findings.review_status).
+const (
+	FindingReviewUnreviewed   = "unreviewed"
+	FindingReviewVerified     = "verified"
+	FindingReviewInsufficient = "evidence_insufficient"
+	FindingReviewLikelyFP     = "likely_fp"
+)
+
+// ValidFindingReviewStatus reports whether s is a known review verdict.
+func ValidFindingReviewStatus(s string) bool {
+	switch s {
+	case FindingReviewUnreviewed, FindingReviewVerified, FindingReviewInsufficient, FindingReviewLikelyFP:
+		return true
+	}
+	return false
+}
+
+// FalsePositivePattern is an aggregated historical false-positive class,
+// used to warn workers before they report the same kind of non-issue again.
+type FalsePositivePattern struct {
+	VulnClass string `json:"vulnclass"`
+	Count     int    `json:"count"`
+	Reasons   string `json:"reasons,omitempty"`
 }
 
 // Finding triage states (findings.status).
@@ -110,7 +143,9 @@ func (d *DB) AddFinding(taskID, nodeID int64, vulnclass, name, severity, summary
 const findingSelectCols = `f.id, f.task_id, f.node_id, f.vulnclass, COALESCE(f.name, ''), f.severity, f.summary,
 	       f.evidence, f.worker, f.asset_ids, COALESCE(f.status, 'pending'), f.created_at,
 	       COALESCE(t.description, '') AS task_description, f.evidence_version, f.report_evidence_version,
- (SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id), COALESCE(f.content_version, 0)`
+ (SELECT count(*) FROM finding_traffic_bindings b WHERE b.finding_id=f.id), COALESCE(f.content_version, 0),
+ COALESCE(f.triage_reason, ''), COALESCE(f.review_status, 'unreviewed'), COALESCE(f.review_reason, ''),
+ COALESCE(f.review_model, ''), f.reviewed_at`
 
 // scanFindings materializes rows selected via findingSelectCols.
 func scanFindings(rows interface {
@@ -122,9 +157,15 @@ func scanFindings(rows interface {
 	for rows.Next() {
 		f := &DBFinding{}
 		var aidsJSON string
+		var reviewedAt sql.NullTime
 		if err := rows.Scan(&f.ID, &f.TaskID, &f.NodeID, &f.VulnClass, &f.Name, &f.Severity,
-			&f.Summary, &f.Evidence, &f.Worker, &aidsJSON, &f.Status, &f.CreatedAt, &f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.ContentVersion); err != nil {
+			&f.Summary, &f.Evidence, &f.Worker, &aidsJSON, &f.Status, &f.CreatedAt, &f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.ContentVersion,
+			&f.TriageReason, &f.ReviewStatus, &f.ReviewReason, &f.ReviewModel, &reviewedAt); err != nil {
 			return nil, err
+		}
+		if reviewedAt.Valid {
+			t := reviewedAt.Time
+			f.ReviewedAt = &t
 		}
 		_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
 		out = append(out, f)
@@ -514,10 +555,16 @@ func (d *DB) ListFindingsForExport(f FindingFilter, ids []int64) ([]*DBFinding, 
 	for rows.Next() {
 		f := &DBFinding{}
 		var aidsJSON string
+		var reviewedAt sql.NullTime
 		if err := rows.Scan(&f.ID, &f.TaskID, &f.NodeID, &f.VulnClass, &f.Name, &f.Severity,
 			&f.Summary, &f.Evidence, &f.Worker, &aidsJSON, &f.Status, &f.CreatedAt,
-			&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.ContentVersion, &f.Report); err != nil {
+			&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.ContentVersion,
+			&f.TriageReason, &f.ReviewStatus, &f.ReviewReason, &f.ReviewModel, &reviewedAt, &f.Report); err != nil {
 			return nil, err
+		}
+		if reviewedAt.Valid {
+			t := reviewedAt.Time
+			f.ReviewedAt = &t
 		}
 		_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
 		out = append(out, f)
@@ -640,18 +687,24 @@ func (d *DB) FindingStats() (*FindingStats, error) {
 func (d *DB) GetFinding(id int64) (*DBFinding, error) {
 	f := &DBFinding{}
 	var aidsJSON string
+	var reviewedAt sql.NullTime
 	err := d.QueryRow(`SELECT `+findingSelectCols+`, COALESCE(f.report, '')
 		FROM findings f
 		LEFT JOIN tasks t ON f.task_id = t.id
 		WHERE f.id = $1`, id).Scan(
 		&f.ID, &f.TaskID, &f.NodeID, &f.VulnClass, &f.Name, &f.Severity,
 		&f.Summary, &f.Evidence, &f.Worker, &aidsJSON, &f.Status, &f.CreatedAt,
-		&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.ContentVersion, &f.Report)
+		&f.TaskDescription, &f.EvidenceVersion, &f.ReportEvidenceVersion, &f.TrafficCount, &f.ContentVersion,
+		&f.TriageReason, &f.ReviewStatus, &f.ReviewReason, &f.ReviewModel, &reviewedAt, &f.Report)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if reviewedAt.Valid {
+		t := reviewedAt.Time
+		f.ReviewedAt = &t
 	}
 	_ = json.Unmarshal([]byte(aidsJSON), &f.AssetIDs)
 	return f, nil
@@ -707,6 +760,58 @@ func (d *DB) SetFindingStatus(id int64, status string) (int64, error) {
 		return 0, err
 	}
 	return res.RowsAffected()
+}
+
+// SetFindingTriageReason records why a human (or a later process) disposed of a
+// finding. It is kept separate from status so a bulk status change cannot silently
+// erase the explanation.
+func (d *DB) SetFindingTriageReason(id int64, reason string) (int64, error) {
+	res, err := d.Exec(`UPDATE findings SET triage_reason=$1 WHERE id=$2`, reason, id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// SetFindingReview stores the latest automated review verdict. It deliberately
+// does not touch status: the review is advisory and a human still decides.
+func (d *DB) SetFindingReview(id int64, status, reason, model string) (int64, error) {
+	if !ValidFindingReviewStatus(status) {
+		return 0, fmt.Errorf("unknown review status: %s", status)
+	}
+	res, err := d.Exec(`UPDATE findings
+		SET review_status=$1, review_reason=$2, review_model=$3, reviewed_at=now()
+		WHERE id=$4`, status, reason, model, id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// ListFindingIDsForReview selects triage candidates, most severe first, so a
+// capped batch always spends its LLM budget on the findings that matter most.
+func (d *DB) ListFindingIDsForReview(ctx context.Context, status string, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := d.QueryContext(ctx, `SELECT id FROM findings
+		WHERE ($1 = '' OR status = $1)
+		ORDER BY CASE severity WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 WHEN 'low' THEN 1 ELSE 0 END DESC,
+		         created_at ASC
+		LIMIT $2`, status, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // SetFindingReportByNodeID sets the Markdown report on the standalone finding row
