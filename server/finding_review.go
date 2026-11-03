@@ -86,7 +86,10 @@ func (s *Server) reviewProviderFor(f *db.DBFinding) (llm.Provider, string, error
 		rt := &taskLLMRuntime{s: s, taskID: i64s(*f.TaskID), agentKey: findingReviewAgentKey}
 		if sel, err := rt.current(); err == nil {
 			model := ""
-			if sel.profileID > 0 {
+			if cfg, ok := rt.activeCfg(); ok {
+				model = cfg.Model
+			}
+			if model == "" && sel.profileID > 0 {
 				if p := s.llmAuditProfile(sel.profileID); p != nil {
 					model = p.Model
 				}
