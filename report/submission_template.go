@@ -88,6 +88,9 @@ func SubmissionMarkdown(f *db.DBFinding, template string, now time.Time) string 
 		b.WriteString(body)
 		b.WriteString("\n")
 	}
+	// Manually attached evidence travels with the report in every template, so
+	// the copied draft and the batch submission pack stay equivalent.
+	b.WriteString(structuredEvidenceMarkdown(f, false, 3))
 	return b.String()
 }
 

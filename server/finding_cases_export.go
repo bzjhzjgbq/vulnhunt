@@ -106,6 +106,14 @@ func (s *Server) consolidateFindingCaseExport(fs []*db.DBFinding, plan *findingC
 					b.Note = fmt.Sprintf("来自上报 #%d；%s", member.ID, b.Note)
 					composite.TrafficBindings = append(composite.TrafficBindings, b)
 				}
+				for _, ev := range member.StructuredEvidence {
+					note := fmt.Sprintf("来自上报 #%d", member.ID)
+					if ev.Note != "" {
+						note += "；" + ev.Note
+					}
+					ev.Note = note
+					composite.StructuredEvidence = append(composite.StructuredEvidence, ev)
+				}
 			}
 			composite.Summary = fmt.Sprintf("漏洞文件夹 #%d；原始记录：%s。统一评级依据：%s", cid, strings.Join(refs, "；"), c.SeverityReason)
 			composite.TrafficCount = len(composite.TrafficBindings)
