@@ -27,7 +27,7 @@ rem 监听所有网卡但保留免登录，把 -addr 改成 0.0.0.0:8787（或�
 set "VULNHUNT_NO_LOGIN=1"
 set "BIND_ADDR=127.0.0.1:8787"
 
-set "BIN=vulnhunt.exe"
+set "BIN=%~dp0vulnhunt.exe"
 if not exist "%BIN%" (
 	echo [vulnhunt] 找不到可执行文件 %BIN% 1>&2
 	exit /b 1

@@ -330,6 +330,13 @@ type FindingDTO struct {
 	Evidence  string `json:"evidence"`
 	Report    string `json:"report,omitempty"` // 详细报告(Markdown);仅详情接口返回,列表为空
 
+	// Triage/automated-review metadata. Status remains the human decision.
+	TriageReason string `json:"triage_reason,omitempty"`
+	ReviewStatus string `json:"review_status,omitempty"`
+	ReviewReason string `json:"review_reason,omitempty"`
+	ReviewModel  string `json:"review_model,omitempty"`
+	ReviewedAt   string `json:"reviewed_at,omitempty"`
+
 	IntentID        string            `json:"intent_id,omitempty"`
 	ParamID         string            `json:"param_id,omitempty"`
 	TaskID          string            `json:"task_id,omitempty"`
@@ -469,6 +476,13 @@ func findingFromDB(f *db.DBFinding, assets map[int64]*db.Asset) FindingDTO {
 		Evidence:           f.Evidence,
 		Report:             f.Report,
 		TS:                 rfc3339(f.CreatedAt),
+		TriageReason:       f.TriageReason,
+		ReviewStatus:       f.ReviewStatus,
+		ReviewReason:       f.ReviewReason,
+		ReviewModel:        f.ReviewModel,
+	}
+	if f.ReviewedAt != nil {
+		d.ReviewedAt = rfc3339(*f.ReviewedAt)
 	}
 	if f.ExportCaseID > 0 {
 		d.ID = "case:" + i64s(f.ExportCaseID)

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"vulnhunt/db"
 	acperm "github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
+	"vulnhunt/db"
 )
 
 // compactIntents distills intents to {id, summary, state, asset_ids, parents,
@@ -450,6 +450,11 @@ func (t *ToolSet) graphOverviewData() map[string]any {
 	factNodes, _ := t.ts.ListByKind(db.KindFact, 1000) // newest first
 	out["findings_total"] = len(vulnNodes)             // 确认漏洞总数（目标判定看它）；明细见 finding_list（最新一窗）
 	out["facts"] = len(factNodes)                      // 探索事实/结论数（含否定结论）
+	// Historical false-positive classes for this task: the planner should not
+	// keep spending workers on a direction this task already rejected.
+	if pats, err := t.ts.FalsePositivePatterns(context.Background(), "", nil, 5); err == nil && len(pats) > 0 {
+		out["false_positive_patterns"] = pats
+	}
 	// findings 是任务里最高价值的产物 → 概览带最新一窗（≤10 条，vulnNodes 已按 id 降序即最新在前），
 	// 让 planner 每轮判目标时一眼看到最近确认的漏洞；全量/更早的用 list_findings 取。
 	// 每条只留 {id, summary, from_intent?}：from_intent 是产生本漏洞的意图。
@@ -1292,6 +1297,7 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 			*db.RecordedFinding
 			EvidenceStatus string `json:"evidence_status"`
 			EvidenceNote   string `json:"evidence_note,omitempty"`
+			PatternWarning string `json:"pattern_warning,omitempty"`
 		}{RecordedFinding: recorded, EvidenceStatus: "bound"}
 		if len(recorded.Traffic.Bindings) == 0 {
 			result.EvidenceStatus = "not_bound"
@@ -1299,6 +1305,11 @@ func (t *ToolSet) addFinding() actool.CoreTool {
 			if !findingTrafficBindingEnabled() {
 				result.EvidenceNote = "漏洞已保存。Agent 自动绑定流量已关闭，可在页面人工关联流量。"
 			}
+		}
+		// False-positive feedback: same-task history is the cheapest useful prior.
+		// Errors are swallowed — this must never discard a reported finding.
+		if pats, perr := t.ts.FalsePositivePatterns(ctx, a.VulnClass, input.AssetIDs, 3); perr == nil {
+			result.PatternWarning = formatFalsePositivePatterns(pats)
 		}
 		raw, _ := json.Marshal(result)
 		return actool.Text(fmt.Sprintf("finding recorded: %d\n%s", recorded.NodeID, raw)), nil

@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger } from "@
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { statusMeta } from "@/lib/status";
 import type { Finding, FindingStatus, Severity } from "@/lib/types";
@@ -47,6 +48,13 @@ function fmtTime(ts: string) {
   return new Date(ts).toLocaleString("zh-CN");
 }
 
+const REVIEW_LABEL: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  verified: { label: "证据充分", variant: "default" },
+  evidence_insufficient: { label: "证据不足", variant: "secondary" },
+  likely_fp: { label: "疑似误报", variant: "destructive" },
+  unreviewed: { label: "未复核", variant: "outline" },
+};
+
 // FieldRow is one label/value line in the right-hand status panel.
 function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -66,6 +74,9 @@ function FindingDetailInner() {
   const [loaded, setLoaded] = React.useState(false);
   const [tab, setTab] = React.useState("overview");
   const [editorOpen, setEditorOpen] = React.useState(false);
+  const [reasonDraft, setReasonDraft] = React.useState("");
+  const [reasonSaving, setReasonSaving] = React.useState(false);
+  const [reviewing, setReviewing] = React.useState(false);
 
   const load = React.useCallback(() => {
     if (!id) {
@@ -81,6 +92,10 @@ function FindingDetailInner() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  React.useEffect(() => {
+    setReasonDraft(finding?.triage_reason ?? "");
+  }, [finding?.triage_reason]);
 
   const changeSeverity = React.useCallback(
     async (next: Severity) => {
@@ -115,6 +130,49 @@ function FindingDetailInner() {
     },
     [finding, id],
   );
+
+  const saveTriageReason = React.useCallback(async () => {
+    if (!finding || finding.inherited) return;
+    setReasonSaving(true);
+    try {
+      const updated = await api.updateFinding(finding.finding_id ?? id, { triage_reason: reasonDraft.trim() });
+      setFinding(updated);
+      toast.success("处置备注已保存");
+    } catch (e) {
+      toast.error("保存失败：" + (e as Error).message);
+    } finally {
+      setReasonSaving(false);
+    }
+  }, [finding, id, reasonDraft]);
+
+  const reviewThis = React.useCallback(async () => {
+    if (!finding || finding.inherited) return;
+    const fid = Number(finding.finding_id ?? finding.id);
+    if (!Number.isFinite(fid) || fid <= 0) {
+      toast.error("该发现没有可复核的独立 ID");
+      return;
+    }
+    setReviewing(true);
+    try {
+      const start = await api.startFindingReview({ ids: [fid] });
+      if (!start.job) {
+        toast.message(start.message ?? "没有需要复核的漏洞");
+        return;
+      }
+      // The job is serial and runs in the background; poll until this one is done.
+      for (let i = 0; i < 80; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const st = await api.findingReviewStatus();
+        if (!st.job?.running) break;
+      }
+      load();
+      toast.success("AI 复核完成");
+    } catch (e) {
+      toast.error("复核失败：" + (e as Error).message);
+    } finally {
+      setReviewing(false);
+    }
+  }, [finding, load]);
 
   if (!finding) {
     return (
@@ -239,8 +297,9 @@ function FindingDetailInner() {
               </Card>
             </div>
 
-            {/* 右栏：状态区 */}
-            <Card className="h-fit lg:sticky lg:top-24">
+            {/* 右栏：状态 / AI 复核 / 处置备注 */}
+            <div className="flex h-fit flex-col gap-4 lg:sticky lg:top-24">
+            <Card>
               <CardHeader>
                 <CardTitle className="text-sm">状态</CardTitle>
               </CardHeader>
@@ -344,8 +403,62 @@ function FindingDetailInner() {
                 <FieldRow label="发现时间">
                   <span className="tabular-nums">{fmtTime(finding.ts)}</span>
                 </FieldRow>
+
+                {/* 处置备注：误报/忽略的原因会进入同类历史误报提醒 */}
+                <div className="py-2.5">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground">处置备注</span>
+                    {!finding.inherited && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => void saveTriageReason()}
+                        disabled={reasonSaving || reasonDraft.trim() === (finding.triage_reason ?? "")}
+                      >
+                        {reasonSaving ? "保存中…" : "保存"}
+                      </Button>
+                    )}
+                  </div>
+                  <Textarea
+                    value={reasonDraft}
+                    onChange={(e) => setReasonDraft(e.target.value)}
+                    placeholder="误报/忽略/重复的原因；会用于后续同类历史误报提醒"
+                    disabled={finding.inherited}
+                    className="min-h-16 text-xs"
+                  />
+                </div>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm">AI 复核</CardTitle>
+                {!finding.inherited && (
+                  <Button size="sm" variant="outline" onClick={() => void reviewThis()} disabled={reviewing}>
+                    {reviewing ? "复核中…" : "复核这条"}
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant={REVIEW_LABEL[finding.review_status ?? "unreviewed"]?.variant ?? "outline"}>
+                    {REVIEW_LABEL[finding.review_status ?? "unreviewed"]?.label ?? "未复核"}
+                  </Badge>
+                  {finding.reviewed_at && (
+                    <span className="text-xs text-muted-foreground">{fmtTime(finding.reviewed_at)}</span>
+                  )}
+                </div>
+                <p className="text-sm whitespace-pre-wrap">
+                  {finding.review_reason ||
+                    "尚未复核。复核只读现有证据，不向目标发请求，也不改变处置状态。"}
+                </p>
+                {finding.review_model && (
+                  <p className="text-xs text-muted-foreground">模型：{finding.review_model}</p>
+                )}
+              </CardContent>
+            </Card>
+            </div>
           </div>
           {editorOpen && (
             <FindingReportEditor
